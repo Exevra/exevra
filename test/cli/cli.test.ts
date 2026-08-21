@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
@@ -37,6 +45,22 @@ const run = async (
     return { code: failed.code, stdout: failed.stdout, stderr: failed.stderr };
   }
 };
+
+test("compiled CLI executes through its package bin symlink", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = join(root, "exevra");
+  await symlink(cli, bin);
+
+  await assert.rejects(
+    execute(process.execPath, [bin, "unexpected"], { cwd: root }),
+    (error: Error & { code?: number; stderr?: string }) => {
+      assert.equal(error.code, 2);
+      assert.match(error.stderr ?? "", /Invalid invocation/);
+      return true;
+    },
+  );
+});
 
 test("compiled CLI initializes config and baseline once", async (t) => {
   const root = await project();
