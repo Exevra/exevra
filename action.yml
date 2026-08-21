@@ -1,5 +1,5 @@
-name: Exevra
-description: Prove your test run.
+name: Exevra Test Integrity
+description: Detect missing or changed JUnit test execution in CI.
 inputs:
   config:
     description: Path to Exevra config
@@ -12,3 +12,6 @@ inputs:
 runs:
   using: node24
   main: dist/index.js
+branding:
+  icon: shield
+  color: purple
