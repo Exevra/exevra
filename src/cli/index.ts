@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   renderGitHubActions,
   renderJson,
@@ -160,7 +162,15 @@ export const main = async (
   }
 };
 
-if (import.meta.url === new URL(process.argv[1] ?? "", "file:").href) {
+const isEntrypoint = (): boolean => {
+  const entry = process.argv[1];
+  return (
+    entry !== undefined &&
+    realpathSync(entry) === fileURLToPath(import.meta.url)
+  );
+};
+
+if (isEntrypoint()) {
   main()
     .then((code) => {
       process.exitCode = code;
