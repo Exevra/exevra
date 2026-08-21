@@ -74,6 +74,10 @@ jobs:
 
 The public Action can be used from any repository. It needs no write token and makes no GitHub API calls.
 
+## See it work
+
+[demo-spring-boot](https://github.com/Exevra/demo-spring-boot) starts with two passing JUnit suites. Its [broken test-discovery branch](https://github.com/Exevra/demo-spring-boot/tree/demo/broken-test-discovery) silently limits Maven Surefire to one class: Maven stays green, but Exevra blocks CI because an expected report is missing.
+
 ## What Exevra does not prove
 
 Exevra checks execution integrity, not test quality, assertions, code correctness, or deployment safety. v0 supports JUnit XML on POSIX systems only. It runs your configured command with the normal permissions of the CI job, so protect changes to the workflow, configuration, and baseline.
