@@ -10,7 +10,7 @@ Exevra's CLI runs in any CI system that can check out the repository, run Node 2
 Add Exevra to the target repository's development dependencies. Commit the resulting lockfile so CI installs the reviewed version.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.0
+npm install --save-dev @exevra-dev/cli@0.1.1
 ```
 
 The CI job runs the command in `.exevra.yml`. That command must create the fresh JUnit XML report named under `reports`.
