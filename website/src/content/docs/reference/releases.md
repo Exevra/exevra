@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.1.1
+
+Fixes CLI startup through package-manager bin symlinks. Installed `exevra` and `npx --package=@exevra-dev/cli exevra` now run the CLI instead of exiting silently.
+
 ## v0.1.0
 
 `exevra init` creates an explicit JUnit execution contract in one step: it writes a new configuration, runs the supplied test command, and records the first baseline. It accepts only `--command`, `--report`, and an optional `--config`; it never overwrites an existing configuration.

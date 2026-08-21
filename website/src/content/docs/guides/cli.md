@@ -6,7 +6,7 @@ description: Install the CLI, then initialize, record, and check a baseline from
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.0
+npm install --save-dev @exevra-dev/cli@0.1.1
 ```
 
 ## Initialize a JUnit project

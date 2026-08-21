@@ -8,7 +8,7 @@ Use Node 22 or later. Exevra runs the command in your configuration through Bash
 Install the CLI as a development dependency in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.0
+npm install --save-dev @exevra-dev/cli@0.1.1
 ```
 
 Initialize Exevra with a test command that writes JUnit XML. The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the command, and creates the first baseline. It never overwrites an existing configuration.

@@ -16,7 +16,7 @@ Exevra checks that a passing CI command ran the tests your repository expects. I
 Install Exevra in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.0
+npm install --save-dev @exevra-dev/cli@0.1.1
 ```
 
 Create a JUnit configuration and its first baseline. The command must write the report named by `--report`.
