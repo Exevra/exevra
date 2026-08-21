@@ -1,0 +1,1 @@
+<testsuites><testsuite name="group"><testsuite name="unit"><testcase classname="u" name="one"/></testsuite><testsuite name="integration"><testcase classname="i" name="one"/></testsuite></testsuite></testsuites>

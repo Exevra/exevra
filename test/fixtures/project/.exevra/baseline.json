@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-12T00:00:00.000Z",
+  "command": "node tools/fake-junit-command.mjs artifacts/junit.xml",
+  "reports": ["artifacts/junit.xml"],
+  "suites": [
+    {
+      "name": "unit",
+      "executed": 10,
+      "skipped": 0,
+      "testIdsHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

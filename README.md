@@ -1,0 +1,91 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="website/src/assets/exevra-folded-trace-dark.svg">
+    <img src="website/src/assets/exevra-folded-trace.svg" width="96" alt="Exevra Folded Trace">
+  </picture>
+</p>
+
+<h1 align="center">EXEVRA</h1>
+
+<p align="center"><strong>Prove your test run.</strong></p>
+
+Exevra checks that a passing CI command ran the tests your repository expects. It compares fresh JUnit XML reports with a reviewed baseline, then flags missing reports, zero execution, suite-count drops, and test-identity drift.
+
+## Get started
+
+Install Exevra in the repository you want to protect:
+
+```sh
+npm install --save-dev @exevra-dev/cli@0.1.0
+```
+
+Create a JUnit configuration and its first baseline. The command must write the report named by `--report`.
+
+```sh
+npx exevra init \
+  --command "npm test -- --reporter=junit --outputFile=artifacts/junit.xml" \
+  --report artifacts/junit.xml
+git add .exevra.yml .exevra/baseline.json
+git commit -m "test: record Exevra baseline"
+```
+
+Run the check locally or in CI:
+
+```sh
+npx exevra check --config .exevra.yml
+```
+
+When an intentional change alters the execution contract, review it and update the baseline:
+
+```sh
+npx exevra record --config .exevra.yml --write
+```
+
+## GitHub Actions
+
+Install your project dependencies before Exevra runs. It then executes the command in `.exevra.yml` and checks the reports it creates.
+
+```yaml
+name: Test execution integrity
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  exevra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - uses: Exevra/exevra@v0.1.0
+        with:
+          config: .exevra.yml
+          mode: enforce
+```
+
+The public Action can be used from any repository. It needs no write token and makes no GitHub API calls.
+
+## What Exevra does not prove
+
+Exevra checks execution integrity, not test quality, assertions, code correctness, or deployment safety. v0 supports JUnit XML on POSIX systems only. It runs your configured command with the normal permissions of the CI job, so protect changes to the workflow, configuration, and baseline.
+
+## Documentation
+
+The [documentation](https://exevra.github.io/exevra/) covers configuration, baseline review, identity privacy, output formats, GitHub Actions, and generic CI systems such as Jenkins.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development and [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+## License
+
+[MIT](LICENSE)

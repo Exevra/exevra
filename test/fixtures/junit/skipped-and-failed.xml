@@ -1,0 +1,1 @@
+<testsuite name="unit"><testcase classname="a" name="skip"><skipped/></testcase><testcase classname="a" name="fail"><failure/></testcase><testcase classname="a" name="error"><error/></testcase></testsuite>

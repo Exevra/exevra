@@ -1,0 +1,11 @@
+version: 1
+baseline: .exevra/baseline.json
+command: node tools/fake-junit-command.mjs artifacts/junit.xml
+reports:
+  - artifacts/junit.xml
+watched:
+  - runner-config.json
+policy:
+  default:
+    min_executed: 1
+    max_drop_percent: 0

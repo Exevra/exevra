@@ -1,0 +1,14 @@
+name: Exevra
+description: Prove your test run.
+inputs:
+  config:
+    description: Path to Exevra config
+    required: false
+    default: .exevra.yml
+  mode:
+    description: Whether findings block the Action
+    required: false
+    default: enforce
+runs:
+  using: node24
+  main: dist/index.js

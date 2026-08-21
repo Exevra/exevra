@@ -1,0 +1,51 @@
+{
+  "name": "@exevra-dev/cli",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Exevra/exevra.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Exevra/exevra/issues"
+  },
+  "homepage": "https://exevra.github.io/exevra/",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "exevra": "build/src/cli/index.js"
+  },
+  "files": [
+    "build/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "bundle": "npm run build && rm -rf dist && ncc build build/src/action/main.js -o dist",
+    "verify:bundle": "npm run bundle && git diff --exit-code -- dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "docs:dev": "npm run dev --prefix website",
+    "docs:build": "npm run build --prefix website",
+    "docs:check": "npm ci --prefix website && npm run docs:build",
+    "test": "npm run bundle && node --test build/test/core/*.test.js build/test/runtime/*.test.js build/test/cli/*.test.js build/test/action/*.test.js",
+    "test:core": "npm run build && node --test build/test/core/*.test.js",
+    "test:runtime": "npm run build && node --test build/test/runtime/*.test.js",
+    "test:cli": "npm run build && node --test build/test/cli/*.test.js"
+  },
+  "dependencies": {
+    "@actions/core": "^2.0.3",
+    "saxes": "^6.0.0",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@vercel/ncc": "^0.38.4",
+    "typescript": "^5.8.3"
+  }
+}

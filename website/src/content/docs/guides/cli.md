@@ -1,0 +1,54 @@
+---
+title: CLI
+description: Install the CLI, then initialize, record, and check a baseline from the command line.
+---
+
+Install the CLI as a development dependency in the repository you want to protect.
+
+```sh
+npm install --save-dev @exevra-dev/cli@0.1.0
+```
+
+## Initialize a JUnit project
+
+The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the test command, and creates the first baseline. It never overwrites an existing configuration.
+
+For v0, `init` accepts ASCII characters only in the configuration filename, report path, and generated baseline path. The containing workspace directory may use non-ASCII characters.
+
+```sh
+npx exevra init \
+  --command "npm test -- --reporter=junit --outputFile=artifacts/junit.xml" \
+  --report artifacts/junit.xml
+git add .exevra.yml .exevra/baseline.json
+git commit -m "test: record Exevra baseline"
+```
+
+If the first test run fails, produces no valid JUnit report, or reports zero executed tests, `.exevra.yml` remains, but `.exevra/baseline.json` is not created. Fix the test command, then create the baseline from that configuration.
+
+```sh
+npx exevra record --config .exevra.yml
+```
+
+## Record or update a baseline
+
+`record` runs the configured command, reads fresh reports, and creates a schema-v1 baseline. It refuses to replace an existing file unless you explicitly pass `--write`.
+
+```sh
+npx exevra record --config .exevra.yml
+npx exevra record --config .exevra.yml --write
+```
+
+Use `--write` only after reviewing an intended execution-contract change. See [Baselines](../baselines/) for the review workflow.
+
+`check` runs the command again and compares fresh reports with the committed baseline.
+
+```sh
+npx exevra check --config .exevra.yml
+npx exevra check --config .exevra.yml --mode advisory
+npx exevra check --config .exevra.yml --format json
+npx exevra check --config .exevra.yml --format github-actions
+```
+
+`--mode enforce` is the default. It returns exit code 1 when at least one error finding exists. `--mode advisory` returns 0 even for error findings. Warning-only findings remain visible and do not fail enforce mode. `record` and `check` return 2 for an invalid invocation or an operational failure, such as unreadable configuration; `record` also returns 2 if it finishes with findings. Successful commands return 0.
+
+`check --base-ref <ref>` compares watched paths against that Git ref. Without a base ref, the command reports that changed-file comparison is unavailable.

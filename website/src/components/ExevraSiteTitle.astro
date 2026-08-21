@@ -1,0 +1,44 @@
+---
+import logoDark from "../assets/exevra-folded-trace-dark.svg";
+import logoLight from "../assets/exevra-folded-trace.svg";
+
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="site-title" aria-label={siteTitle}>
+  <img class="light:sl-hidden print:hidden" alt="" src={logoDark.src} width={logoDark.width} height={logoDark.height} />
+  <img class="dark:sl-hidden print:block" alt="" src={logoLight.src} width={logoLight.width} height={logoLight.height} />
+  <span class="site-title__wordmark" aria-hidden="true"><span>EX</span>EVRA</span>
+</a>
+
+<style>
+  .site-title {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+    color: var(--sl-color-text-accent);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  img {
+    width: auto;
+    max-width: 100%;
+    height: calc(var(--sl-nav-height) - 2 * var(--sl-nav-pad-y));
+    object-fit: contain;
+  }
+
+  .site-title__wordmark {
+    overflow: hidden;
+    color: var(--sl-color-white);
+    font-size: var(--sl-text-lg);
+    font-weight: 800;
+    letter-spacing: -0.07em;
+    line-height: 1;
+  }
+
+  .site-title__wordmark > span {
+    color: var(--sl-color-accent);
+  }
+</style>
