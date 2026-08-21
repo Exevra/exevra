@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { parse } from "yaml";
@@ -431,4 +432,45 @@ test("release workflows and documentation pin current v7 GitHub Actions", async 
       /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/,
     );
   }
+});
+
+test("npm publish metadata step executes with a missing package version", async (t) => {
+  const workflow = parse(
+    await readFile(join(process.cwd(), ".github/workflows/publish.yml"), "utf8"),
+  ) as {
+    jobs: { publish: { steps: { id?: string; run?: string }[] } };
+  };
+  const script = workflow.jobs.publish.steps.find(
+    (step) => step.id === "package",
+  )?.run;
+  if (script === undefined) assert.fail("missing package metadata step");
+
+  const root = await mkdtemp(join(tmpdir(), "exevra-publish-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  const npm = join(bin, "npm");
+  await writeFile(npm, "#!/usr/bin/env bash\nexit 1\n");
+  await chmod(npm, 0o755);
+  const output = join(root, "github-output");
+  const child = spawn("bash", ["-e"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      GITHUB_OUTPUT: output,
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+    },
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  child.stdin.end(script);
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  assert.equal(code, 0, stderr);
+  assert.equal(await readFile(output, "utf8"), "published=false\n");
 });
