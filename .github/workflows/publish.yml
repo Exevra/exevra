@@ -27,6 +27,7 @@ jobs:
           node-version: 22.14.0
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
+      - run: npm install --global npm@11.5.1
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
