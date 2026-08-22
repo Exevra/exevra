@@ -7,6 +7,12 @@
 
 <h1 align="center">EXEVRA</h1>
 
+<p align="center">
+  <a href="https://github.com/Exevra/exevra/actions/workflows/ci.yml"><img src="https://github.com/Exevra/exevra/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://www.npmjs.com/package/@exevra-dev/cli"><img src="https://img.shields.io/npm/v/%40exevra-dev%2Fcli.svg" alt="npm version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
+
 <p align="center"><strong>Prove your test run.</strong></p>
 
 Exevra checks that a passing CI command ran the tests your repository expects. It compares fresh JUnit XML reports with a reviewed baseline, then flags missing reports, zero execution, suite-count drops, and test-identity drift.
