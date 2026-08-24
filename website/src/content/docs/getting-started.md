@@ -21,6 +21,16 @@ git add .exevra.yml .exevra/baseline.json
 git commit -m "test: record Exevra baseline"
 ```
 
+For Maven projects that use the standard Surefire and/or Failsafe report directories, run:
+
+```sh
+npx exevra init --maven
+git add .exevra.yml .exevra/baseline.json
+git commit -m "test: record Exevra baseline"
+```
+
+This runs `mvn verify` and reads `target/surefire-reports/TEST-*.xml` and `target/failsafe-reports/TEST-*.xml` when present. Custom report directories are not detected.
+
 For v0, `init` accepts ASCII characters only in the configuration filename and report path. Your workspace directory may use non-ASCII characters. This keeps configuration and report paths unambiguous on filesystems with Unicode aliases.
 
 If the first test run fails, produces no valid JUnit report, or reports zero executed tests, `.exevra.yml` remains, but `.exevra/baseline.json` is not created. Fix the test command, then create the baseline from that configuration.

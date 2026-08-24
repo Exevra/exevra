@@ -3,11 +3,11 @@ title: Troubleshooting
 description: Diagnose common failures from configured commands, reports, and baselines.
 ---
 
-Exevra removes each configured report before invoking the configured command. Start with the finding code and inspect the command, report location, and committed contract.
+Exevra removes configured literal reports and files matched by configured report patterns before invoking the configured command. Start with the finding code and inspect the command, report location, and committed contract.
 
 | Finding or notice | What to check |
 | --- | --- |
-| `REPORT_MISSING` | Ensure the command writes every configured JUnit XML file on every run and that the path is relative to the config root. |
+| `REPORT_MISSING` | Ensure the command writes every configured literal JUnit XML file on every run, or at least one configured filename pattern matches. Paths must be relative to the config root. |
 | `NO_TESTS_EXECUTED` | Check runner discovery, filters, and skipped tests. A baseline cannot be recorded with zero executed tests. |
 | `TEST_COMMAND_FAILED` | Fix the configured Bash command and its test failure before Exevra can evaluate reports. |
 | `init` rejects a path before running tests | Use ASCII characters only in the configuration filename and report path. The workspace directory itself may use non-ASCII characters. |

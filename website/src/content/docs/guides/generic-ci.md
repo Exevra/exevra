@@ -13,7 +13,7 @@ Add Exevra to the target repository's development dependencies. Commit the resul
 npm install --save-dev @exevra-dev/cli@0.1.1
 ```
 
-The CI job runs the command in `.exevra.yml`. That command must create the fresh JUnit XML report named under `reports`.
+The CI job runs the command in `.exevra.yml`. That command must create fresh JUnit XML for every literal entry under `reports`; filename patterns read every matching XML file and require at least one match when the configuration uses patterns only.
 
 ## Basic CI step
 

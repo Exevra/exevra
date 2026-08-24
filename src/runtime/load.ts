@@ -12,7 +12,6 @@ export interface LoadedRuntimeConfig {
   root: string;
   config: Config;
   baselinePath: string;
-  reportPaths: string[];
 }
 
 export const loadRuntimeConfig = async (
@@ -32,9 +31,6 @@ export const loadRuntimeConfig = async (
     ...location,
     config,
     baselinePath: resolveInRoot(location.root, config.baseline),
-    reportPaths: config.reports.map((report) =>
-      resolveInRoot(location.root, report),
-    ),
   };
 };
 

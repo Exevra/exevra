@@ -7,8 +7,11 @@ import {
 } from "./command.js";
 import { changedFiles } from "./git.js";
 import { loadRuntimeConfig, readBaselineIfPresent } from "./load.js";
-import { loadReports } from "./reports.js";
-import { assertSafeInRootPath } from "./paths.js";
+import {
+  expandReportPaths,
+  loadReports,
+  missingReportPatterns,
+} from "./reports.js";
 
 export interface CheckOptions {
   configPath: string;
@@ -36,16 +39,23 @@ export const check = async ({
 }: CheckOptions): Promise<CheckResult> => {
   const loaded = await loadRuntimeConfig(configPath);
   const notices: string[] = [];
-  for (const reportPath of loaded.reportPaths)
-    await assertSafeInRootPath(loaded.root, reportPath);
-  await cleanReports(loaded.reportPaths);
+  await cleanReports(
+    await expandReportPaths(loaded.root, loaded.config.reports),
+  );
   const command = await runConfiguredCommand(
     loaded.root,
     loaded.config.command,
   );
   if (command.finding)
     return { findings: [command.finding], identityDiffs: [], suites: [], notices };
-  const missing = await missingReports(loaded.reportPaths);
+  const currentReportPaths = await expandReportPaths(
+    loaded.root,
+    loaded.config.reports,
+  );
+  const missing = [
+    ...(await missingReports(currentReportPaths)),
+    ...(await missingReportPatterns(loaded.root, loaded.config.reports)),
+  ];
   if (missing.length > 0)
     return {
       findings: missing.map(reportFinding),
@@ -53,9 +63,7 @@ export const check = async ({
       suites: [],
       notices,
     };
-  for (const reportPath of loaded.reportPaths)
-    await assertSafeInRootPath(loaded.root, reportPath);
-  const suites = await loadReports(loaded.root, loaded.config);
+  const suites = await loadReports(loaded.root, loaded.config.reports);
   const baseline = await readBaselineIfPresent(
     loaded.root,
     loaded.baselinePath,

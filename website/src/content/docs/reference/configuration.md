@@ -29,7 +29,7 @@ policy:
       identity_details: names
 ```
 
-`version` must be `1`. `baseline` is the JSON baseline path. `command` is a non-empty Bash command. `reports` is a non-empty list of unique JUnit XML paths. `watched` is an optional list of paths matched as globs when a base ref is available.
+`version` must be `1`. `baseline` is the JSON baseline path. `command` is a non-empty Bash command. `reports` is a non-empty list of unique JUnit XML paths or filename patterns. A pattern may contain `*` in its filename, not its directory, and every matched XML file is checked. Literal report paths must be produced on every run. If all report entries are patterns, at least one must match; this lets `init --maven` work for Surefire-only, Failsafe-only, and combined Maven projects. `watched` is an optional list of paths matched as globs when a base ref is available.
 
 `policy.default` is required. Its `min_executed` is a non-negative integer and `max_drop_percent` is a number from 0 through 100. `identity` accepts `off`, `warn`, or `enforce` and defaults to `warn`; `identity_details` accepts `counts` or `names` and defaults to `counts`.
 

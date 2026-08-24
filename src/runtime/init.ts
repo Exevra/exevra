@@ -12,7 +12,7 @@ import {
 export interface InitializeOptions {
   configPath: string;
   command: string;
-  reportPath: string;
+  reportPath: string | string[];
 }
 
 export interface InitializeResult {
@@ -33,13 +33,13 @@ const assertAsciiRolePath = (
     );
 };
 
-const sourceFor = (command: string, reportPath: string): string =>
+const sourceFor = (command: string, reportPaths: string[]): string =>
   stringify(
     {
       version: 1,
       baseline: generatedBaselinePath,
       command,
-      reports: [reportPath],
+      reports: reportPaths,
       policy: {
         default: {
           min_executed: 1,
@@ -84,16 +84,17 @@ export const initialize = async ({
   command,
   reportPath,
 }: InitializeOptions): Promise<InitializeResult> => {
+  const reportPaths = Array.isArray(reportPath) ? reportPath : [reportPath];
   const targetName = basename(resolve(configPath));
   assertAsciiRolePath("configuration", targetName);
-  assertAsciiRolePath("report", reportPath);
+  for (const path of reportPaths) assertAsciiRolePath("report", path);
   assertAsciiRolePath("baseline", generatedBaselinePath);
-  const source = sourceFor(command, reportPath);
+  const source = sourceFor(command, reportPaths);
   const config = loadConfig(source);
   const root = await realpath(dirname(resolve(configPath)));
   const target = join(root, targetName);
   const baselinePath = resolveInRoot(root, config.baseline);
-  const reportPaths = config.reports.map((report) =>
+  const configuredReportPaths = config.reports.map((report) =>
     resolveInRoot(root, report),
   );
   if (
@@ -101,14 +102,15 @@ export const initialize = async ({
     endsWithRolePath(target, config.baseline)
   )
     rejectPathOverlap("configuration", "baseline");
-  for (const path of reportPaths) {
+  for (const path of configuredReportPaths) {
     if (pathsOverlap(path, target))
       rejectPathOverlap("report", "configuration");
     if (pathsOverlap(path, baselinePath))
       rejectPathOverlap("report", "baseline");
   }
   await assertSafeInRootPath(root, baselinePath);
-  for (const path of reportPaths) await assertSafeInRootPath(root, path);
+  for (const path of configuredReportPaths)
+    await assertSafeInRootPath(root, path);
   try {
     await lstat(target);
     throw new RuntimeError(`configuration already exists: ${target}`);

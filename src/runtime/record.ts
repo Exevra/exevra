@@ -18,7 +18,11 @@ import {
 } from "./command.js";
 import { loadRuntimeConfig } from "./load.js";
 import { assertSafeInRootPath, RuntimeError } from "./paths.js";
-import { loadReports } from "./reports.js";
+import {
+  expandReportPaths,
+  loadReports,
+  missingReportPatterns,
+} from "./reports.js";
 
 export interface RecordOptions {
   configPath: string;
@@ -56,8 +60,10 @@ export const record = async ({
 }: RecordOptions): Promise<RecordResult> => {
   const loaded = await loadRuntimeConfig(configPath);
   await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
-  for (const reportPath of loaded.reportPaths)
-    await assertSafeInRootPath(loaded.root, reportPath);
+  const existingReportPaths = await expandReportPaths(
+    loaded.root,
+    loaded.config.reports,
+  );
   if (!write) {
     try {
       await access(loaded.baselinePath, constants.F_OK);
@@ -68,7 +74,7 @@ export const record = async ({
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  await cleanReports(loaded.reportPaths);
+  await cleanReports(existingReportPaths);
   const command = await runConfiguredCommand(
     loaded.root,
     loaded.config.command,
@@ -79,7 +85,14 @@ export const record = async ({
       suites: [],
       findings: [command.finding],
     };
-  const missing = await missingReports(loaded.reportPaths);
+  const currentReportPaths = await expandReportPaths(
+    loaded.root,
+    loaded.config.reports,
+  );
+  const missing = [
+    ...(await missingReports(currentReportPaths)),
+    ...(await missingReportPatterns(loaded.root, loaded.config.reports)),
+  ];
   if (missing.length > 0)
     return {
       baseline: undefined as never,
@@ -92,7 +105,7 @@ export const record = async ({
           "Configure the test command to write every required JUnit report.",
       })),
     };
-  const suites = await loadReports(loaded.root, loaded.config);
+  const suites = await loadReports(loaded.root, loaded.config.reports);
   if (suites.reduce((total, suite) => total + suite.executed, 0) === 0)
     throw new RuntimeError("cannot record a baseline with zero executed tests");
   const baseline: Baseline = {

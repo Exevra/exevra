@@ -15,6 +15,8 @@ The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra
 
 For v0, `init` accepts ASCII characters only in the configuration filename, report path, and generated baseline path. The containing workspace directory may use non-ASCII characters.
 
+For Maven projects using standard Surefire and/or Failsafe report directories, use `npx exevra init --maven`. It runs `mvn verify` and reads `target/surefire-reports/TEST-*.xml` and `target/failsafe-reports/TEST-*.xml` when present; it does not parse custom Maven report directories.
+
 ```sh
 npx exevra init \
   --command "npm test -- --reporter=junit --outputFile=artifacts/junit.xml" \

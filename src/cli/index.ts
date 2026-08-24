@@ -27,7 +27,7 @@ interface InitInvocation {
   command: "init";
   configPath: string;
   testCommand: string;
-  reportPath: string;
+  reportPaths: string[];
 }
 
 interface CheckInvocation {
@@ -66,9 +66,14 @@ const parse = (arguments_: readonly string[]): Invocation => {
       write = true;
       continue;
     }
+    if (argument === "--maven" && command === "init") {
+      if (values.has(argument)) throw new InvocationError("--maven may be supplied once");
+      values.set(argument, "true");
+      continue;
+    }
     const allowed =
       command === "init"
-        ? new Set(["--config", "--command", "--report"])
+        ? new Set(["--config", "--command", "--report", "--maven"])
         : command === "record"
         ? new Set(["--config"])
         : new Set(["--config", "--base-ref", "--mode", "--format"]);
@@ -81,13 +86,26 @@ const parse = (arguments_: readonly string[]): Invocation => {
   }
   const configPath = values.get("--config") ?? ".exevra.yml";
   if (command === "init") {
+    if (values.get("--maven") === "true") {
+      if (values.has("--command") || values.has("--report"))
+        throw new InvocationError("--maven cannot be combined with --command or --report");
+      return {
+        command,
+        configPath,
+        testCommand: "mvn verify",
+        reportPaths: [
+          "target/surefire-reports/TEST-*.xml",
+          "target/failsafe-reports/TEST-*.xml",
+        ],
+      };
+    }
     const testCommand = values.get("--command");
     if (testCommand === undefined)
       throw new InvocationError("--command is required for init");
     const reportPath = values.get("--report");
     if (reportPath === undefined)
       throw new InvocationError("--report is required for init");
-    return { command, configPath, testCommand, reportPath };
+    return { command, configPath, testCommand, reportPaths: [reportPath] };
   }
   if (command === "record") return { command, configPath, write };
   const mode = values.get("--mode") ?? "enforce";
@@ -126,7 +144,7 @@ export const main = async (
       const result = await initialize({
         configPath: invocation.configPath,
         command: invocation.testCommand,
-        reportPath: invocation.reportPath,
+        reportPath: invocation.reportPaths,
       });
       process.stdout.write(
         `Created config: ${invocation.configPath}\n` +
