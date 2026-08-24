@@ -30,6 +30,10 @@ interface InitInvocation {
   reportPaths: string[];
 }
 
+interface HelpInvocation {
+  command: "help";
+}
+
 interface CheckInvocation {
   command: "check";
   configPath: string;
@@ -38,9 +42,19 @@ interface CheckInvocation {
   format: Format;
 }
 
-type Invocation = InitInvocation | RecordInvocation | CheckInvocation;
+type Invocation = InitInvocation | RecordInvocation | CheckInvocation | HelpInvocation;
 
 class InvocationError extends Error {}
+
+const usage =
+  "Usage: exevra <command> [options]\n\n" +
+  "Commands:\n" +
+  "  init --command <command> --report <path>\n" +
+  "  init --maven\n" +
+  "  record [--config <path>] [--write]\n" +
+  "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n\n" +
+  "Options:\n" +
+  "  -h, --help  Show this help\n";
 
 const optionValue = (
   arguments_: readonly string[],
@@ -54,6 +68,8 @@ const optionValue = (
 };
 
 const parse = (arguments_: readonly string[]): Invocation => {
+  if (arguments_.length === 1 && ["-h", "--help"].includes(arguments_[0]!))
+    return { command: "help" };
   const command = arguments_[0];
   if (command !== "init" && command !== "record" && command !== "check")
     throw new InvocationError("expected init, record, or check");
@@ -140,6 +156,10 @@ export const main = async (
     return 2;
   }
   try {
+    if (invocation.command === "help") {
+      process.stdout.write(usage);
+      return 0;
+    }
     if (invocation.command === "init") {
       const result = await initialize({
         configPath: invocation.configPath,

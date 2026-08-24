@@ -9,6 +9,8 @@ Install the CLI as a development dependency in the repository you want to protec
 npm install --save-dev @exevra-dev/cli@0.1.1
 ```
 
+Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
+
 ## Initialize a JUnit project
 
 The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the test command, and creates the first baseline. It never overwrites an existing configuration.
