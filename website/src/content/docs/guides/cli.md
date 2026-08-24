@@ -6,7 +6,7 @@ description: Install the CLI, then initialize, record, and check a baseline from
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.1
+npm install --save-dev @exevra-dev/cli@0.1.2
 ```
 
 Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
@@ -23,8 +23,6 @@ For Maven projects using standard Surefire and/or Failsafe report directories, u
 npx exevra init \
   --command "npm test -- --reporter=junit --outputFile=artifacts/junit.xml" \
   --report artifacts/junit.xml
-git add .exevra.yml .exevra/baseline.json
-git commit -m "test: record Exevra baseline"
 ```
 
 If the first test run fails, produces no valid JUnit report, or reports zero executed tests, `.exevra.yml` remains, but `.exevra/baseline.json` is not created. Fix the test command, then create the baseline from that configuration.
