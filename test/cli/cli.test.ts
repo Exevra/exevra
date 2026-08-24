@@ -5,6 +5,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  chmod,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -31,9 +32,18 @@ const run = async (
   root: string,
   ...arguments_: string[]
 ): Promise<{ code: number; stdout: string; stderr: string }> => {
+  return runWithEnvironment(root, {}, ...arguments_);
+};
+
+const runWithEnvironment = async (
+  root: string,
+  environment: NodeJS.ProcessEnv,
+  ...arguments_: string[]
+): Promise<{ code: number; stdout: string; stderr: string }> => {
   try {
     const result = await execute(process.execPath, [cli, ...arguments_], {
       cwd: root,
+      env: { ...process.env, ...environment },
     });
     return { code: 0, stdout: result.stdout, stderr: result.stderr };
   } catch (error) {
@@ -45,6 +55,62 @@ const run = async (
     return { code: failed.code, stdout: failed.stdout, stderr: failed.stderr };
   }
 };
+
+test("compiled CLI initializes standard Surefire and Failsafe reports", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra.yml"), { force: true });
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  const mvn = join(bin, "mvn");
+  await writeFile(
+    mvn,
+    "#!/usr/bin/env sh\n" +
+      "node tools/fake-junit-command.mjs target/surefire-reports/TEST-unit.xml\n" +
+      "node tools/fake-junit-command.mjs target/failsafe-reports/TEST-integration.xml\n",
+  );
+  await chmod(mvn, 0o755);
+
+  const initialized = await runWithEnvironment(
+    root,
+    { PATH: `${bin}:${process.env.PATH ?? ""}` },
+    "init",
+    "--maven",
+  );
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  const config = await readFile(join(root, ".exevra.yml"), "utf8");
+  assert.match(config, /command: mvn verify/);
+  assert.match(config, /target\/surefire-reports\/TEST-\*\.xml/);
+  assert.match(config, /target\/failsafe-reports\/TEST-\*\.xml/);
+  await readFile(join(root, ".exevra", "baseline.json"), "utf8");
+});
+
+test("compiled CLI initializes when only standard Surefire reports exist", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra.yml"), { force: true });
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  const mvn = join(bin, "mvn");
+  await writeFile(
+    mvn,
+    "#!/usr/bin/env sh\n" +
+      "node tools/fake-junit-command.mjs target/surefire-reports/TEST-unit.xml\n",
+  );
+  await chmod(mvn, 0o755);
+
+  const initialized = await runWithEnvironment(
+    root,
+    { PATH: `${bin}:${process.env.PATH ?? ""}` },
+    "init",
+    "--maven",
+  );
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+});
 
 test("compiled CLI executes through its package bin symlink", async (t) => {
   const root = await project();

@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## Unreleased
+
+`exevra init --maven` runs `mvn verify` and configures standard Surefire and Failsafe `TEST-*.xml` report patterns. The directories are optional independently, so Maven projects with unit tests only, integration tests only, or both can initialize without custom configuration. Custom Maven report directories and `pom.xml` parsing remain unsupported.
+
 ## v0.1.1
 
 Fixes CLI startup through package-manager bin symlinks. Installed `exevra` and `npx --package=@exevra-dev/cli exevra` now run the CLI instead of exiting silently.

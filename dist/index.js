@@ -43512,7 +43512,6 @@ const load_loadRuntimeConfig = async (configPath) => {
         ...location,
         config,
         baselinePath: paths_resolveInRoot(location.root, config.baseline),
-        reportPaths: config.reports.map((report) => paths_resolveInRoot(location.root, report)),
     };
 };
 const readBaselineIfPresent = async (root, path) => {
@@ -43553,18 +43552,57 @@ const readBaselineIfPresent = async (root, path) => {
 
 
 
-const reports_loadReports = async (root, config) => {
+
+const pattern = (value) => new RegExp(`^${value
+    .split("*")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join(".*")}$`);
+const reports_expandReportPaths = async (root, reports) => {
+    const paths = [];
+    for (const report of reports) {
+        if (!report.includes("*")) {
+            const path = paths_resolveInRoot(root, report);
+            await paths_assertSafeInRootPath(root, path);
+            paths.push(path);
+            continue;
+        }
+        const directory = (0,external_node_path_namespaceObject.dirname)(report);
+        if (directory.includes("*"))
+            throw new Error("report wildcards are only supported in file names");
+        const directoryPath = paths_resolveInRoot(root, directory);
+        await paths_assertSafeInRootPath(root, directoryPath);
+        try {
+            const entries = await (0,promises_.readdir)(directoryPath, { withFileTypes: true });
+            for (const entry of entries
+                .filter((item) => item.isFile() && pattern((0,external_node_path_namespaceObject.basename)(report)).test(item.name))
+                .sort((left, right) => left.name.localeCompare(right.name))) {
+                const path = paths_resolveInRoot(root, `${directory}/${entry.name}`);
+                await paths_assertSafeInRootPath(root, path);
+                paths.push(path);
+            }
+        }
+        catch (error) {
+            if (error.code !== "ENOENT")
+                throw error;
+        }
+    }
+    return paths;
+};
+const reports_missingReportPatterns = async (root, reports) => {
+    const patterns = reports.filter((report) => report.includes("*"));
+    if (patterns.length === 0)
+        return [];
+    return (await reports_expandReportPaths(root, patterns)).length === 0 ? patterns : [];
+};
+const reports_loadReports = async (root, reports) => {
     const observations = [];
-    for (const report of config.reports) {
-        const path = paths_resolveInRoot(root, report);
-        await paths_assertSafeInRootPath(root, path);
-        observations.push(...(0,core/* parseJunit */.kJ)(await (0,promises_.readFile)(path, "utf8"), report));
+    for (const path of await reports_expandReportPaths(root, reports)) {
+        observations.push(...(0,core/* parseJunit */.kJ)(await (0,promises_.readFile)(path, "utf8"), (0,external_node_path_namespaceObject.relative)(root, path)));
     }
     return (0,core/* aggregateSuites */.N)(observations);
 };
 
 ;// CONCATENATED MODULE: ./build/src/runtime/check.js
-
 
 
 
@@ -43579,13 +43617,15 @@ const reportFinding = (path) => ({
 const check = async ({ configPath, baseRef, changedPaths, }) => {
     const loaded = await load_loadRuntimeConfig(configPath);
     const notices = [];
-    for (const reportPath of loaded.reportPaths)
-        await paths_assertSafeInRootPath(loaded.root, reportPath);
-    await command_cleanReports(loaded.reportPaths);
+    await command_cleanReports(await reports_expandReportPaths(loaded.root, loaded.config.reports));
     const command = await command_runConfiguredCommand(loaded.root, loaded.config.command);
     if (command.finding)
         return { findings: [command.finding], identityDiffs: [], suites: [], notices };
-    const missing = await command_missingReports(loaded.reportPaths);
+    const currentReportPaths = await reports_expandReportPaths(loaded.root, loaded.config.reports);
+    const missing = [
+        ...(await command_missingReports(currentReportPaths)),
+        ...(await reports_missingReportPatterns(loaded.root, loaded.config.reports)),
+    ];
     if (missing.length > 0)
         return {
             findings: missing.map(reportFinding),
@@ -43593,9 +43633,7 @@ const check = async ({ configPath, baseRef, changedPaths, }) => {
             suites: [],
             notices,
         };
-    for (const reportPath of loaded.reportPaths)
-        await paths_assertSafeInRootPath(loaded.root, reportPath);
-    const suites = await reports_loadReports(loaded.root, loaded.config);
+    const suites = await reports_loadReports(loaded.root, loaded.config.reports);
     const baseline = await readBaselineIfPresent(loaded.root, loaded.baselinePath);
     let paths = changedPaths;
     if (paths === undefined && baseRef !== undefined)
@@ -43668,8 +43706,7 @@ const atomicWriteBaseline = async (path, contents, overwrite) => {
 const record_record = async ({ configPath, write = false, generatedAt = new Date().toISOString(), }) => {
     const loaded = await loadRuntimeConfig(configPath);
     await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
-    for (const reportPath of loaded.reportPaths)
-        await assertSafeInRootPath(loaded.root, reportPath);
+    const existingReportPaths = await expandReportPaths(loaded.root, loaded.config.reports);
     if (!write) {
         try {
             await access(loaded.baselinePath, constants.F_OK);
@@ -43680,7 +43717,7 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
                 throw error;
         }
     }
-    await cleanReports(loaded.reportPaths);
+    await cleanReports(existingReportPaths);
     const command = await runConfiguredCommand(loaded.root, loaded.config.command);
     if (command.finding)
         return {
@@ -43688,7 +43725,11 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
             suites: [],
             findings: [command.finding],
         };
-    const missing = await missingReports(loaded.reportPaths);
+    const currentReportPaths = await expandReportPaths(loaded.root, loaded.config.reports);
+    const missing = [
+        ...(await missingReports(currentReportPaths)),
+        ...(await missingReportPatterns(loaded.root, loaded.config.reports)),
+    ];
     if (missing.length > 0)
         return {
             baseline: undefined,
@@ -43700,7 +43741,7 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
                 remediation: "Configure the test command to write every required JUnit report.",
             })),
         };
-    const suites = await loadReports(loaded.root, loaded.config);
+    const suites = await loadReports(loaded.root, loaded.config.reports);
     if (suites.reduce((total, suite) => total + suite.executed, 0) === 0)
         throw new RuntimeError("cannot record a baseline with zero executed tests");
     const baseline = {
@@ -43739,11 +43780,11 @@ const assertAsciiRolePath = (role, path) => {
     if (/[^\x00-\x7f]/.test(path))
         throw new RuntimeError(`initialization ${role} path must use ASCII characters only`);
 };
-const sourceFor = (command, reportPath) => stringify({
+const sourceFor = (command, reportPaths) => stringify({
     version: 1,
     baseline: generatedBaselinePath,
     command,
-    reports: [reportPath],
+    reports: reportPaths,
     policy: {
         default: {
             min_executed: 1,
@@ -43771,27 +43812,29 @@ const rejectPathOverlap = (leftRole, rightRole) => {
     throw new RuntimeError(`initialization paths overlap: ${leftRole} and ${rightRole}`);
 };
 const initialize = async ({ configPath, command, reportPath, }) => {
+    const reportPaths = Array.isArray(reportPath) ? reportPath : [reportPath];
     const targetName = basename(resolve(configPath));
     assertAsciiRolePath("configuration", targetName);
-    assertAsciiRolePath("report", reportPath);
+    for (const path of reportPaths)
+        assertAsciiRolePath("report", path);
     assertAsciiRolePath("baseline", generatedBaselinePath);
-    const source = sourceFor(command, reportPath);
+    const source = sourceFor(command, reportPaths);
     const config = loadConfig(source);
     const root = await realpath(dirname(resolve(configPath)));
     const target = join(root, targetName);
     const baselinePath = resolveInRoot(root, config.baseline);
-    const reportPaths = config.reports.map((report) => resolveInRoot(root, report));
+    const configuredReportPaths = config.reports.map((report) => resolveInRoot(root, report));
     if (pathsOverlap(target, baselinePath) ||
         endsWithRolePath(target, config.baseline))
         rejectPathOverlap("configuration", "baseline");
-    for (const path of reportPaths) {
+    for (const path of configuredReportPaths) {
         if (pathsOverlap(path, target))
             rejectPathOverlap("report", "configuration");
         if (pathsOverlap(path, baselinePath))
             rejectPathOverlap("report", "baseline");
     }
     await assertSafeInRootPath(root, baselinePath);
-    for (const path of reportPaths)
+    for (const path of configuredReportPaths)
         await assertSafeInRootPath(root, path);
     try {
         await lstat(target);

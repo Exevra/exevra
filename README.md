@@ -35,6 +35,16 @@ git add .exevra.yml .exevra/baseline.json
 git commit -m "test: record Exevra baseline"
 ```
 
+For a Maven project using standard Surefire and/or Failsafe report directories:
+
+```sh
+npx exevra init --maven
+git add .exevra.yml .exevra/baseline.json
+git commit -m "test: record Exevra baseline"
+```
+
+This runs `mvn verify` and reads standard `TEST-*.xml` reports from either directory. It does not parse custom Maven configuration.
+
 Run the check locally or in CI:
 
 ```sh
