@@ -8,7 +8,7 @@ Use Node 22 or later. Exevra runs the command in your configuration through Bash
 Install the CLI as a development dependency in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.1
+npm install --save-dev @exevra-dev/cli@0.1.2
 ```
 
 Initialize Exevra with a test command that writes JUnit XML. The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the command, and creates the first baseline. It never overwrites an existing configuration.
@@ -17,16 +17,12 @@ Initialize Exevra with a test command that writes JUnit XML. The `npx exevra ini
 npx exevra init \
   --command "npm test -- --reporter=junit --outputFile=artifacts/junit.xml" \
   --report artifacts/junit.xml
-git add .exevra.yml .exevra/baseline.json
-git commit -m "test: record Exevra baseline"
 ```
 
 For Maven projects that use the standard Surefire and/or Failsafe report directories, run:
 
 ```sh
 npx exevra init --maven
-git add .exevra.yml .exevra/baseline.json
-git commit -m "test: record Exevra baseline"
 ```
 
 This runs `mvn verify` and reads `target/surefire-reports/TEST-*.xml` and `target/failsafe-reports/TEST-*.xml` when present. Custom report directories are not detected.

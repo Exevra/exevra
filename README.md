@@ -24,7 +24,7 @@ See every command and option with `npx exevra --help` (or `npx exevra -h`).
 Install Exevra in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.1
+npm install --save-dev @exevra-dev/cli@0.1.2
 ```
 
 Create a JUnit configuration and its first baseline. The command must write the report named by `--report`.
@@ -33,16 +33,12 @@ Create a JUnit configuration and its first baseline. The command must write the 
 npx exevra init \
   --command "npm test -- --reporter=junit --outputFile=artifacts/junit.xml" \
   --report artifacts/junit.xml
-git add .exevra.yml .exevra/baseline.json
-git commit -m "test: record Exevra baseline"
 ```
 
 For a Maven project using standard Surefire and/or Failsafe report directories:
 
 ```sh
 npx exevra init --maven
-git add .exevra.yml .exevra/baseline.json
-git commit -m "test: record Exevra baseline"
 ```
 
 This runs `mvn verify` and reads standard `TEST-*.xml` reports from either directory. It does not parse custom Maven configuration.
@@ -84,7 +80,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.1.0
+      - uses: Exevra/exevra@v0.1.2
         with:
           config: .exevra.yml
           mode: enforce
