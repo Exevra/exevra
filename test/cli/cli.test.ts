@@ -56,6 +56,27 @@ const runWithEnvironment = async (
   }
 };
 
+test("compiled CLI prints help for standard help flags", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const expected =
+    "Usage: exevra <command> [options]\n\n" +
+    "Commands:\n" +
+    "  init --command <command> --report <path>\n" +
+    "  init --maven\n" +
+    "  record [--config <path>] [--write]\n" +
+    "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n\n" +
+    "Options:\n" +
+    "  -h, --help  Show this help\n";
+
+  for (const flag of ["-h", "--help"]) {
+    const result = await run(root, flag);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout, expected);
+    assert.equal(result.stderr, "");
+  }
+});
+
 test("compiled CLI initializes standard Surefire and Failsafe reports", async (t) => {
   const root = await project();
   t.after(() => rm(root, { recursive: true, force: true }));

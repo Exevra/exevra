@@ -19,6 +19,8 @@ Exevra checks that a passing CI command ran the tests your repository expects. I
 
 ## Get started
 
+See every command and option with `npx exevra --help` (or `npx exevra -h`).
+
 Install Exevra in the repository you want to protect:
 
 ```sh
