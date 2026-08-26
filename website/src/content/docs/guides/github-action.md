@@ -40,8 +40,6 @@ In `enforce` mode, error findings fail the Action. Warning findings produce anno
 
 ## Matrix jobs
 
-The `aggregate` CLI collector is included in `@exevra-dev/cli@0.3.0` (introduced in `0.2.0`); use it after matrix jobs have uploaded and downloaded their reports.
-
 The Action runs the configured command, so use the CLI collector after matrix jobs have uploaded and downloaded their JUnit artifacts. `aggregate` never runs or cleans `command`; it reads only the explicit artifact layout from `aggregation`.
 
 See [Matrix and shard aggregation](./matrix-aggregation/) for a complete matrix upload/download example and the required missing-shard behavior.

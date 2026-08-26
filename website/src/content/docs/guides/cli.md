@@ -87,8 +87,6 @@ npx exevra check --config .exevra.yml --format github-actions
 
 ## Aggregate downloaded shard reports
 
-`aggregate` is included in `@exevra-dev/cli@0.3.0` (introduced in `0.2.0`).
-
 `aggregate` reads the explicit shard artifacts configured under `aggregation`, combines their JUnit suites, and evaluates the existing baseline. It never runs `command` or deletes report files.
 
 ```sh

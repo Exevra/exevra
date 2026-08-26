@@ -91,8 +91,6 @@ This list is illustrative, not a whitelist. A framework that cannot produce JUni
 
 ## Matrix and shard aggregation
 
-Matrix aggregation is included in `@exevra-dev/cli@0.3.0`.
-
 For tests split across CI jobs, upload each shard's JUnit artifact and download it into an explicit `aggregation.root/<shard>` layout in one collector job. Then run:
 
 ```sh
