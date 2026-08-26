@@ -11,6 +11,27 @@ npm install --save-dev @exevra-dev/cli@0.2.0
 
 Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
 
+## Framework support
+
+Exevra does not call framework APIs. It runs your configured POSIX command and evaluates the fresh JUnit XML reports it produces. That makes the CLI compatible with any framework that has a JUnit reporter or converter.
+
+| Ecosystem | JUnit output | Exevra setup |
+| --- | --- | --- |
+| Maven Surefire/Failsafe | Standard `TEST-*.xml` directories | Built-in `init --maven` |
+| Vitest | `--reporter=junit --outputFile=...` | Zero-argument Node init on the development branch; explicit flags in `0.2.0` |
+| Jest | `jest-junit` | Explicit command/config |
+| Playwright | JUnit reporter | Explicit command/config |
+| Mocha | `mocha-junit-reporter` | Explicit command/config |
+| Cypress | JUnit reporter/plugin | Explicit command/config |
+| pytest | `--junitxml=...` | Explicit command/config |
+| Gradle, Kotlin, and JUnit | Gradle test XML | Explicit report path |
+| Go test | `go-junit-report` or equivalent | Explicit converter |
+| .NET xUnit/NUnit/MSTest | JUnit-compatible logger | Explicit logger/config |
+| PHPUnit | `--log-junit` | Explicit command/config |
+| RSpec | JUnit formatter | Explicit formatter/config |
+
+This is a compatibility contract, not a framework whitelist. If a runner does not emit JUnit XML, add its reporter or a converter, then point `reports` at the generated file or pattern. Exevra currently requires a POSIX/Bash runtime.
+
 ## Initialize a JUnit project
 
 In a Node project with `package.json` and a `test` script, the zero-argument form detects the package manager, recognizes common Node test frameworks, and creates the first baseline:

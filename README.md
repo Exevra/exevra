@@ -63,6 +63,32 @@ When an intentional change alters the execution contract, review it and update t
 npx exevra record --config .exevra.yml --write
 ```
 
+## Framework support
+
+Exevra is JUnit XML based, not tied to one test framework. It runs the configured POSIX command, reads the fresh reports it produces, and compares them with the reviewed baseline.
+
+Built-in setup:
+
+- **Maven Surefire/Failsafe** — `npx exevra init --maven` detects the standard report directories.
+- **Vitest** — the development `init` flow detects Vitest and adds its JUnit reporter flags without editing `package.json`. Released `0.2.0` uses the explicit setup form above.
+
+Other ecosystems work when their JUnit reporter or converter is configured explicitly:
+
+| Ecosystem | JUnit output | Setup level |
+| --- | --- | --- |
+| Jest | `jest-junit` | Explicit command/config |
+| Playwright | JUnit reporter | Explicit command/config |
+| Mocha | `mocha-junit-reporter` | Explicit command/config |
+| Cypress | JUnit reporter/plugin | Explicit command/config |
+| pytest | `--junitxml` | Explicit command/config |
+| Gradle, Kotlin, and JUnit | Gradle test XML | Explicit report path |
+| Go test | `go-junit-report` or equivalent | Explicit converter |
+| .NET xUnit/NUnit/MSTest | JUnit-compatible logger | Explicit logger/config |
+| PHPUnit | `--log-junit` | Explicit command/config |
+| RSpec | JUnit formatter | Explicit formatter/config |
+
+This list is illustrative, not a whitelist. A framework that cannot produce JUnit XML needs a reporter or converter before Exevra can evaluate it. The CLI currently runs on POSIX/Bash environments.
+
 ## Matrix and shard aggregation
 
 Matrix aggregation is included in `@exevra-dev/cli@0.2.0`.
