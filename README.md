@@ -57,6 +57,8 @@ npx exevra record --config .exevra.yml --write
 
 ## Matrix and shard aggregation
 
+> **Unreleased:** Matrix aggregation is available only when running Exevra from this source branch. It is not included in `@exevra-dev/cli@0.1.2`; the published CLI rejects `aggregate` as an invalid command.
+
 For tests split across CI jobs, upload each shard's JUnit artifact and download it into an explicit `aggregation.root/<shard>` layout in one collector job. Then run:
 
 ```sh
@@ -108,7 +110,7 @@ Exevra checks execution integrity, not test quality, assertions, code correctnes
 
 ## Documentation
 
-The [documentation](https://exevra.github.io/exevra/) covers configuration, baseline review, identity privacy, output formats, matrix aggregation, GitHub Actions, and generic CI systems such as Jenkins.
+The [documentation](https://exevra.github.io/exevra/) covers configuration, baseline review, identity privacy, output formats, the unreleased source-only matrix aggregation workflow, GitHub Actions, and generic CI systems such as Jenkins.
 
 ## Contributing and security
 

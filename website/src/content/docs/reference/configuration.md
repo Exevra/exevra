@@ -37,6 +37,8 @@ policy:
 
 ## Aggregation
 
+> **Unreleased:** The `aggregation` configuration and `aggregate` command are available only from this source branch, not `@exevra-dev/cli@0.1.2`.
+
 `aggregation` is optional and is used only by `aggregate`. It needs a relative `root`, a non-empty list of unique `shards`, and a non-empty list of shard-relative JUnit `reports`. A shard is one directory name: it cannot contain a separator, `.`, `..`, or NUL.
 
 ```yaml

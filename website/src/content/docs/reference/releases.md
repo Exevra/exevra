@@ -22,5 +22,3 @@ Initialization rejects configuration, baseline, and report path collisions or un
 This first release includes the local CLI and GitHub Action workflow: a configured Bash command, fresh JUnit XML reports, committed schema-v1 baselines, suite execution-count policy, watched-path signal checks, text/JSON/GitHub Actions output, advisory mode, and per-suite test-identity comparison.
 
 New baselines store individual fingerprint multisets. `identity_details: counts` reports missing and added counts, while `identity_details: names` permits bounded readable identifiers only in CLI text and the Action job summary for explicitly configured suites.
-
-The current v0 boundary remains JUnit XML only, with no hosted service, GitHub API use, pull-request comments, remote artifact lookup, or matrix aggregation.

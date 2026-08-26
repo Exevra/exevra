@@ -17,6 +17,6 @@ Exevra runs one configured test command, requires fresh JUnit XML reports, and c
 
 By default, identity diagnosis keeps raw test names out of the baseline and ordinary output. It records opaque fingerprints and reports safe missing and added counts instead. Teams can explicitly opt in to readable names for a protected suite when that is appropriate for their repository.
 
-Exevra v0 accepts JUnit XML only. It does not assess test quality, assertions, code correctness, or whether a change is safe. It has no hosted service, accounts, GitHub API calls, pull-request comments, remote artifact lookup, or matrix aggregation.
+Published Exevra v0.1.2 accepts JUnit XML only. It does not assess test quality, assertions, code correctness, or whether a change is safe. It has no hosted service, accounts, GitHub API calls, pull-request comments, remote artifact lookup, or matrix aggregation. Aggregation exists only in the source branch and remains unreleased.
 
 Start with the [quick start](./getting-started/) to create and commit a baseline.

@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Install the CLI, then initialize, record, check, or aggregate a baseline from the command line.
+description: Install the CLI, then initialize, record, or check a baseline from the command line; preview unreleased aggregation from source.
 ---
 
 Install the CLI as a development dependency in the repository you want to protect.
@@ -56,6 +56,8 @@ npx exevra check --config .exevra.yml --format github-actions
 `check --base-ref <ref>` compares watched paths against that Git ref. Without a base ref, the command reports that changed-file comparison is unavailable.
 
 ## Aggregate downloaded shard reports
+
+> **Unreleased:** `aggregate` is available only when running Exevra from this source branch. It is not included in `@exevra-dev/cli@0.1.2`; the published CLI rejects it as an invalid command.
 
 `aggregate` reads the explicit shard artifacts configured under `aggregation`, combines their JUnit suites, and evaluates the existing baseline. It never runs `command` or deletes report files.
 
