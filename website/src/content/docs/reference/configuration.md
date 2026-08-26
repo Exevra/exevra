@@ -51,6 +51,6 @@ aggregation:
     - target/surefire-reports/TEST-*.xml
 ```
 
-The collector expects each artifact under `aggregation.root/<shard>`, and applies each aggregation report pattern relative to that directory. The top-level `reports` remain the contract for `check` and `record`; `aggregate` does not run `command`, clear reports, or use `watched` paths. See [Matrix and shard aggregation](../guides/matrix-aggregation/) for the CI workflow.
+The collector expects each artifact under `aggregation.root/<shard>`, and applies each aggregation report pattern relative to that directory. The top-level `reports` remain the contract for `check` and `record`; `aggregate` does not run `command`, clear reports, or use `watched` paths. See [Matrix and shard aggregation](../../guides/matrix-aggregation/) for the CI workflow.
 
 Read [Identity drift](../identity-drift/) before using `names`.
