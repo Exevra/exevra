@@ -39,12 +39,19 @@ export interface ProtectedSuitePolicy extends SuitePolicy {
   match: string;
 }
 
+export interface AggregationConfig {
+  root: string;
+  shards: string[];
+  reports: string[];
+}
+
 export interface Config {
   version: 1;
   baseline: string;
   command: string;
   reports: string[];
   watched: string[];
+  aggregation?: AggregationConfig;
   policy: {
     default: SuitePolicy;
     protectedSuites: ProtectedSuitePolicy[];
