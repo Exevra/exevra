@@ -42714,7 +42714,7 @@ __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependen
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7484);
 /* harmony import */ var node_fs_promises__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(1455);
 /* harmony import */ var _index_js__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(1560);
-/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(1963);
+/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(3811);
 
 
 
@@ -42783,6 +42783,35 @@ const relativePath = (value, field) => {
     if (normalized === "")
         throw new CoreValidationError(`${field} must be a relative file path within the configuration root`);
     return normalized;
+};
+const shard = (value, field) => {
+    const id = stringValue(value, field);
+    if (id === "." ||
+        id === ".." ||
+        id.includes("/") ||
+        id.includes("\\") ||
+        id.includes("\u0000"))
+        throw new CoreValidationError(`${field} must be a single shard ID`);
+    return id;
+};
+const aggregation = (value) => {
+    if (!isRecord(value))
+        throw new CoreValidationError("aggregation must be an object");
+    if (!Array.isArray(value.shards) || value.shards.length === 0)
+        throw new CoreValidationError("aggregation.shards must be a non-empty array");
+    if (!Array.isArray(value.reports) || value.reports.length === 0)
+        throw new CoreValidationError("aggregation.reports must be a non-empty array");
+    const shards = value.shards.map((item, index) => shard(item, `aggregation.shards[${index}]`));
+    if (new Set(shards).size !== shards.length)
+        throw new CoreValidationError("aggregation.shards must not contain a duplicate shard ID");
+    const reports = value.reports.map((item, index) => relativePath(item, `aggregation.reports[${index}]`));
+    if (new Set(reports).size !== reports.length)
+        throw new CoreValidationError("aggregation.reports must not contain a duplicate report path");
+    return {
+        root: relativePath(value.root, "aggregation.root"),
+        shards,
+        reports,
+    };
 };
 const policy = (value, field) => {
     if (!isRecord(value))
@@ -42870,6 +42899,7 @@ const loadConfig = (source) => {
         command: stringValue(value.command, "command"),
         reports,
         watched,
+        aggregation: value.aggregation === undefined ? undefined : aggregation(value.aggregation),
         policy: {
             default: policy(value.policy.default, "policy.default"),
             protectedSuites,
@@ -43313,7 +43343,7 @@ const renderGitHubActions = (input) => {
 
 /***/ }),
 
-/***/ 1963:
+/***/ 3811:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -43322,7 +43352,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   z6: () => (/* reexport */ check)
 });
 
-// UNUSED EXPORTS: RuntimeError, assertSafeInRootPath, changedFiles, initialize, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
+// UNUSED EXPORTS: RuntimeError, aggregate, assertSafeInRootPath, changedFiles, initialize, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
 
 // EXTERNAL MODULE: ./build/src/core/index.js + 6 modules
 var core = __nccwpck_require__(3290);
@@ -43514,7 +43544,7 @@ const load_loadRuntimeConfig = async (configPath) => {
         baselinePath: paths_resolveInRoot(location.root, config.baseline),
     };
 };
-const readBaselineIfPresent = async (root, path) => {
+const load_readBaselineIfPresent = async (root, path) => {
     await paths_assertSafeInRootPath(root, path);
     let source;
     try {
@@ -43601,6 +43631,56 @@ const reports_loadReports = async (root, reports) => {
     }
     return (0,core/* aggregateSuites */.N)(observations);
 };
+const reports_loadAggregatedReports = async (root, aggregation) => {
+    const aggregationRoot = resolveInRoot(root, aggregation.root);
+    await assertSafeInRootPath(root, aggregationRoot);
+    const shards = [];
+    const missingShards = [];
+    const missingReports = [];
+    for (const shard of [...aggregation.shards].sort()) {
+        const shardRoot = resolveInRoot(aggregationRoot, shard);
+        await assertSafeInRootPath(root, shardRoot);
+        try {
+            if (!(await lstat(shardRoot)).isDirectory())
+                throw new Error(`configured shard is not a directory: ${shardRoot}`);
+        }
+        catch (error) {
+            if (error.code === "ENOENT") {
+                missingShards.push(shard);
+                continue;
+            }
+            throw error;
+        }
+        const reportPaths = [];
+        const observations = [];
+        for (const report of [...aggregation.reports].sort()) {
+            let matched = false;
+            for (const path of await reports_expandReportPaths(shardRoot, [report])) {
+                try {
+                    observations.push(...parseJunit(await readFile(path, "utf8"), relative(shardRoot, path)));
+                    reportPaths.push(path);
+                    matched = true;
+                }
+                catch (error) {
+                    if (error.code !== "ENOENT")
+                        throw error;
+                }
+            }
+            if (!matched)
+                missingReports.push(relative(root, resolveInRoot(shardRoot, report)));
+        }
+        shards.push({
+            shard,
+            reportPaths: reportPaths.sort(),
+            suites: aggregateSuites(observations),
+        });
+    }
+    return {
+        shards,
+        missingShards: missingShards.sort(),
+        missingReports: missingReports.sort(),
+    };
+};
 
 ;// CONCATENATED MODULE: ./build/src/runtime/check.js
 
@@ -43634,7 +43714,7 @@ const check = async ({ configPath, baseRef, changedPaths, }) => {
             notices,
         };
     const suites = await reports_loadReports(loaded.root, loaded.config.reports);
-    const baseline = await readBaselineIfPresent(loaded.root, loaded.baselinePath);
+    const baseline = await load_readBaselineIfPresent(loaded.root, loaded.baselinePath);
     let paths = changedPaths;
     if (paths === undefined && baseRef !== undefined)
         paths = await changedFiles(loaded.root, baseRef);
@@ -43670,6 +43750,59 @@ const check = async ({ configPath, baseRef, changedPaths, }) => {
         suites,
         notices,
     };
+};
+
+;// CONCATENATED MODULE: ./build/src/runtime/aggregate.js
+
+
+
+
+const shardFinding = (shard) => ({
+    code: "SHARD_MISSING",
+    severity: "error",
+    message: `Required shard artifact directory is missing: ${shard}`,
+    remediation: "Download every configured shard artifact before aggregating reports.",
+});
+const aggregate_reportFinding = (path) => ({
+    code: "REPORT_MISSING",
+    severity: "error",
+    message: `Required shard report was not found: ${path}`,
+    remediation: "Configure every shard to upload the required JUnit reports.",
+});
+const zeroExecutionFinding = (shard) => ({
+    code: "SHARD_NO_TESTS_EXECUTED",
+    severity: "error",
+    message: `Shard executed no non-skipped tests: ${shard}`,
+    remediation: "Check test discovery and the shard's uploaded JUnit reports.",
+});
+const aggregate = async ({ configPath, }) => {
+    const loaded = await loadRuntimeConfig(configPath);
+    const aggregation = loaded.config.aggregation;
+    if (!aggregation)
+        throw new RuntimeError("aggregation configuration is required for aggregate checks");
+    const reports = await loadAggregatedReports(loaded.root, aggregation);
+    const suites = aggregateSuites(reports.shards.flatMap((shard) => shard.suites));
+    const findings = [
+        ...reports.missingShards.map((shard) => shardFinding(`${aggregation.root}/${shard}`)),
+        ...reports.missingReports.map(aggregate_reportFinding),
+        ...reports.shards
+            .filter((shard) => shard.reportPaths.length > 0 &&
+            shard.suites.reduce((total, suite) => total + suite.executed, 0) === 0)
+            .map((shard) => zeroExecutionFinding(shard.shard)),
+    ];
+    const notices = [
+        "Changed-file comparison is unavailable for aggregate checks.",
+    ];
+    if (findings.length > 0)
+        return { findings, identityDiffs: [], suites, notices };
+    const baseline = await readBaselineIfPresent(loaded.root, loaded.baselinePath);
+    const result = evaluate({
+        config: loaded.config,
+        baseline,
+        currentSuites: suites,
+        changedPaths: [],
+    });
+    return { ...result, suites, notices };
 };
 
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
@@ -43868,6 +44001,7 @@ const initialize = async ({ configPath, command, reportPath, }) => {
 };
 
 ;// CONCATENATED MODULE: ./build/src/runtime/index.js
+
 
 
 

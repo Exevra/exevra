@@ -24,7 +24,7 @@ See every command and option with `npx exevra --help` (or `npx exevra -h`).
 Install Exevra in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.2
+npm install --save-dev @exevra-dev/cli@0.2.0
 ```
 
 Create a JUnit configuration and its first baseline. The command must write the report named by `--report`.
@@ -55,6 +55,18 @@ When an intentional change alters the execution contract, review it and update t
 npx exevra record --config .exevra.yml --write
 ```
 
+## Matrix and shard aggregation
+
+Matrix aggregation is included in `@exevra-dev/cli@0.2.0`.
+
+For tests split across CI jobs, upload each shard's JUnit artifact and download it into an explicit `aggregation.root/<shard>` layout in one collector job. Then run:
+
+```sh
+npx exevra aggregate --config .exevra.yml
+```
+
+`aggregate` combines the downloaded reports and evaluates the existing baseline. It never runs or cleans the configured test command, and it does not integrate with a CI-provider API. See [Matrix and shard aggregation](https://exevra.github.io/exevra/guides/matrix-aggregation/) for the configuration and GitHub Actions example.
+
 ## GitHub Actions
 
 Install your project dependencies before Exevra runs. It then executes the command in `.exevra.yml` and checks the reports it creates.
@@ -80,7 +92,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.1.2
+      - uses: Exevra/exevra@v0.2.0
         with:
           config: .exevra.yml
           mode: enforce
@@ -98,7 +110,8 @@ Exevra checks execution integrity, not test quality, assertions, code correctnes
 
 ## Documentation
 
-The [documentation](https://exevra.github.io/exevra/) covers configuration, baseline review, identity privacy, output formats, GitHub Actions, and generic CI systems such as Jenkins.
+The [documentation](https://exevra.github.io/exevra/) covers configuration, baseline review, identity privacy, output formats, matrix aggregation, GitHub Actions, and generic CI systems such as Jenkins.
+
 
 ## Contributing and security
 

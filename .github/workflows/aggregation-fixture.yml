@@ -1,0 +1,53 @@
+name: Matrix aggregation fixture
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        shard: [unit-jdk17, unit-jdk21]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: exevra-${{ matrix.shard }}
+          path: test/fixtures/aggregation/artifacts/shards/${{ matrix.shard }}/target/surefire-reports
+  collect:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: cp test/fixtures/aggregation/.exevra.yml .exevra.yml && cp -R test/fixtures/aggregation/.exevra .exevra
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: exevra-unit-jdk17
+          path: artifacts/shards/unit-jdk17/target/surefire-reports
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: exevra-unit-jdk21
+          path: artifacts/shards/unit-jdk21/target/surefire-reports
+      - run: node build/src/cli/index.js aggregate --config .exevra.yml --format github-actions
+      - run: rm -rf artifacts/shards/unit-jdk21
+      - run: |
+          if node build/src/cli/index.js aggregate --config .exevra.yml > aggregate-missing.log 2>&1; then
+            cat aggregate-missing.log
+            exit 1
+          fi
+          grep -q SHARD_MISSING aggregate-missing.log

@@ -77,6 +77,27 @@ test("renderers present a passing outcome", () => {
   assert.match(renderGitHubActions(input), /^EXEVRA PASSED/m);
 });
 
+test("renderers preserve aggregate findings in every output contract", () => {
+  const input = {
+    findings: [
+      {
+        code: "SHARD_MISSING" as const,
+        severity: "error" as const,
+        message: "Required shard artifact directory is missing: unit-jdk21",
+        remediation: "Download every configured shard artifact before aggregating reports.",
+      },
+    ],
+    suites: [],
+  };
+
+  assert.match(renderText(input), /SHARD_MISSING/);
+  assert.equal(JSON.parse(renderJson(input)).findings[0].code, "SHARD_MISSING");
+  assert.match(
+    renderGitHubActions(input),
+    /::error title=EXEVRA SHARD_MISSING::/,
+  );
+});
+
 test("renderers present warning-only identity drift without blocking", () => {
   const warning = {
     code: "TEST_IDENTITIES_CHANGED" as const,

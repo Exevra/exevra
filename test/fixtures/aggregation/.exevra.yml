@@ -1,0 +1,16 @@
+version: 1
+baseline: .exevra/baseline.json
+command: node tools/aggregate-sentinel.mjs
+reports:
+  - target/surefire-reports/TEST-*.xml
+aggregation:
+  root: artifacts/shards
+  shards:
+    - unit-jdk17
+    - unit-jdk21
+  reports:
+    - target/surefire-reports/TEST-*.xml
+policy:
+  default:
+    min_executed: 1
+    max_drop_percent: 0

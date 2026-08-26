@@ -214,3 +214,64 @@ test("rejects duplicate normalized reports and invalid literal paths", () => {
     /baseline/,
   );
 });
+
+test("loads and normalizes aggregation configuration", () => {
+  assert.deepEqual(
+    loadConfig({
+      ...valid,
+      aggregation: {
+        root: "artifacts//shards",
+        shards: ["unit-jdk17", "unit-jdk21"],
+        reports: ["target//surefire-reports/TEST-*.xml"],
+      },
+    }).aggregation,
+    {
+      root: "artifacts/shards",
+      shards: ["unit-jdk17", "unit-jdk21"],
+      reports: ["target/surefire-reports/TEST-*.xml"],
+    },
+  );
+});
+
+test("rejects duplicate normalized aggregation reports", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        ...valid,
+        aggregation: {
+          root: "artifacts/shards",
+          shards: ["unit-jdk17"],
+          reports: [
+            "target//surefire-reports/TEST-*.xml",
+            "target/surefire-reports/TEST-*.xml",
+          ],
+        },
+      }),
+    /aggregation\.reports.*duplicate report path/,
+  );
+});
+
+test("rejects invalid aggregation configuration", () => {
+  const aggregation = {
+    root: "artifacts/shards",
+    shards: ["unit"],
+    reports: ["target/TEST-*.xml"],
+  };
+  const reject = (change: Partial<typeof aggregation>) =>
+    assert.throws(
+      () => loadConfig({ ...valid, aggregation: { ...aggregation, ...change } }),
+      CoreValidationError,
+    );
+
+  reject({ root: undefined });
+  reject({ shards: [] });
+  reject({ shards: ["unit", "unit"] });
+  reject({ reports: [] });
+  reject({ root: "/artifacts" });
+  reject({ reports: ["../TEST-*.xml"] });
+  reject({ shards: ["unit/test"] });
+  reject({ shards: ["unit\\test"] });
+  reject({ shards: ["."] });
+  reject({ shards: [".."] });
+  reject({ shards: ["unit\u0000test"] });
+});

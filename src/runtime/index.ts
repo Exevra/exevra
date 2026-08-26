@@ -1,4 +1,5 @@
 export { check, type CheckOptions, type CheckResult } from "./check.js";
+export { aggregate, type AggregateOptions } from "./aggregate.js";
 export {
   initialize,
   type InitializeOptions,

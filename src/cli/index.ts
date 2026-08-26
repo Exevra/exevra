@@ -8,6 +8,7 @@ import {
   renderText,
 } from "../core/index.js";
 import {
+  aggregate,
   check,
   initialize,
   record,
@@ -42,7 +43,19 @@ interface CheckInvocation {
   format: Format;
 }
 
-type Invocation = InitInvocation | RecordInvocation | CheckInvocation | HelpInvocation;
+interface AggregateInvocation {
+  command: "aggregate";
+  configPath: string;
+  mode: Mode;
+  format: Format;
+}
+
+type Invocation =
+  | InitInvocation
+  | RecordInvocation
+  | CheckInvocation
+  | AggregateInvocation
+  | HelpInvocation;
 
 class InvocationError extends Error {}
 
@@ -52,7 +65,8 @@ const usage =
   "  init --command <command> --report <path>\n" +
   "  init --maven\n" +
   "  record [--config <path>] [--write]\n" +
-  "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n\n" +
+  "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
+  "  aggregate [--config <path>] [--mode enforce|advisory] [--format text|json|github-actions]\n\n" +
   "Options:\n" +
   "  -h, --help  Show this help\n";
 
@@ -71,8 +85,13 @@ const parse = (arguments_: readonly string[]): Invocation => {
   if (arguments_.length === 1 && ["-h", "--help"].includes(arguments_[0]!))
     return { command: "help" };
   const command = arguments_[0];
-  if (command !== "init" && command !== "record" && command !== "check")
-    throw new InvocationError("expected init, record, or check");
+  if (
+    command !== "init" &&
+    command !== "record" &&
+    command !== "check" &&
+    command !== "aggregate"
+  )
+    throw new InvocationError("expected init, record, check, or aggregate");
   const values = new Map<string, string>();
   let write = false;
   for (let index = 1; index < arguments_.length; index += 1) {
@@ -92,7 +111,9 @@ const parse = (arguments_: readonly string[]): Invocation => {
         ? new Set(["--config", "--command", "--report", "--maven"])
         : command === "record"
         ? new Set(["--config"])
-        : new Set(["--config", "--base-ref", "--mode", "--format"]);
+        : command === "check"
+        ? new Set(["--config", "--base-ref", "--mode", "--format"])
+        : new Set(["--config", "--mode", "--format"]);
     if (!allowed.has(argument))
       throw new InvocationError(`unsupported option: ${argument}`);
     if (values.has(argument))
@@ -130,13 +151,8 @@ const parse = (arguments_: readonly string[]): Invocation => {
     throw new InvocationError("--mode must be enforce or advisory");
   if (format !== "text" && format !== "json" && format !== "github-actions")
     throw new InvocationError("--format must be text, json, or github-actions");
-  return {
-    command,
-    configPath,
-    baseRef: values.get("--base-ref"),
-    mode,
-    format,
-  };
+  if (command === "aggregate") return { command, configPath, mode, format };
+  return { command, configPath, baseRef: values.get("--base-ref"), mode, format };
 };
 
 const render = (format: Format, result: CheckResult): string => {
@@ -182,6 +198,16 @@ export const main = async (
         renderText({ findings: result.findings, suites: result.suites }),
       );
       return result.findings.length === 0 ? 0 : 2;
+    }
+    if (invocation.command === "aggregate") {
+      const result = await aggregate({ configPath: invocation.configPath });
+      process.stdout.write(render(invocation.format, result));
+      return (
+        invocation.mode === "advisory" ||
+        !result.findings.some((finding) => finding.severity === "error")
+      )
+        ? 0
+        : 1;
     }
     const result = await check({
       configPath: invocation.configPath,

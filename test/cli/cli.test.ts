@@ -17,15 +17,62 @@ import test from "node:test";
 
 const execute = promisify(execFile);
 const fixture = join(process.cwd(), "test", "fixtures", "project");
+const aggregationFixture = join(
+  process.cwd(),
+  "test",
+  "fixtures",
+  "aggregation",
+);
 const packageManifest = JSON.parse(
   await readFile(join(process.cwd(), "package.json"), "utf8"),
 ) as { bin: { exevra: string } };
 const cli = join(process.cwd(), packageManifest.bin.exevra);
 
-const project = async (prefix = "exevra-cli-"): Promise<string> => {
+const project = async (
+  prefix = "exevra-cli-",
+  source = fixture,
+): Promise<string> => {
   const root = await mkdtemp(join(tmpdir(), prefix));
-  await cp(fixture, root, { recursive: true });
+  await cp(source, root, { recursive: true });
   return root;
+};
+
+const writeAggregationConfig = async (root: string): Promise<void> => {
+  await writeFile(
+    join(root, ".exevra.yml"),
+    `${await readFile(join(root, ".exevra.yml"), "utf8")}
+aggregation:
+  root: artifacts/shards
+  shards:
+    - unit-jdk17
+    - unit-jdk21
+  reports:
+    - target/surefire-reports/TEST-*.xml
+`,
+  );
+};
+
+const writeShardReport = async (
+  root: string,
+  shard: string,
+  tests: readonly string[],
+): Promise<void> => {
+  const report = join(
+    root,
+    "artifacts",
+    "shards",
+    shard,
+    "target",
+    "surefire-reports",
+    "TEST-unit.xml",
+  );
+  await mkdir(dirname(report), { recursive: true });
+  await writeFile(
+    report,
+    `<testsuite name="unit">${tests
+      .map((name) => `<testcase classname="unit" name="${name}"/>`)
+      .join("")}</testsuite>`,
+  );
 };
 
 const run = async (
@@ -65,7 +112,8 @@ test("compiled CLI prints help for standard help flags", async (t) => {
     "  init --command <command> --report <path>\n" +
     "  init --maven\n" +
     "  record [--config <path>] [--write]\n" +
-    "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n\n" +
+    "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
+    "  aggregate [--config <path>] [--mode enforce|advisory] [--format text|json|github-actions]\n\n" +
     "Options:\n" +
     "  -h, --help  Show this help\n";
 
@@ -549,6 +597,83 @@ test("compiled CLI reports pass, enforcement, advisory, and output formats", asy
   assert.match(githubActions.stdout, /unit: 10 -> 0/);
 });
 
+test("compiled CLI aggregates shard reports in every output format", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeAggregationConfig(root);
+  await writeShardReport(root, "unit-jdk17", [
+    "test-1",
+    "test-2",
+    "test-3",
+    "test-4",
+    "test-5",
+  ]);
+  await writeShardReport(root, "unit-jdk21", [
+    "test-6",
+    "test-7",
+    "test-8",
+    "test-9",
+    "test-10",
+  ]);
+
+  const text = await run(root, "aggregate");
+  assert.equal(text.code, 0);
+  assert.match(text.stdout, /^EXEVRA PASSED WITH WARNINGS/m);
+
+  const json = await run(root, "aggregate", "--format", "json");
+  assert.equal(json.code, 0);
+  assert.equal(JSON.parse(json.stdout).outcome, "passed_with_warnings");
+
+  const githubActions = await run(
+    root,
+    "aggregate",
+    "--format",
+    "github-actions",
+  );
+  assert.equal(githubActions.code, 0);
+  assert.match(githubActions.stdout, /^EXEVRA PASSED WITH WARNINGS/m);
+  assert.match(
+    githubActions.stdout,
+    /::warning title=EXEVRA NOTICE::Changed-file comparison is unavailable for aggregate checks\./,
+  );
+});
+
+test("compiled CLI aggregates missing shards with enforce and advisory modes", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeAggregationConfig(root);
+  await writeShardReport(root, "unit-jdk17", ["test-1"]);
+
+  const enforced = await run(root, "aggregate");
+  assert.equal(enforced.code, 1);
+  assert.match(enforced.stdout, /SHARD_MISSING/);
+
+  const advisory = await run(root, "aggregate", "--mode", "advisory");
+  assert.equal(advisory.code, 0);
+  assert.match(advisory.stdout, /SHARD_MISSING/);
+});
+
+test("compiled CLI aggregates a two-shard fixture without running its command", async (t) => {
+  const root = await project("exevra-aggregation-", aggregationFixture);
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const complete = await run(root, "aggregate", "--format", "json");
+  assert.equal(complete.code, 0, complete.stderr);
+  assert.deepEqual(JSON.parse(complete.stdout).suites, [
+    { name: "unit", executed: 2, skipped: 0 },
+  ]);
+  await assert.rejects(readFile(join(root, "aggregate-sentinel"), "utf8"));
+
+  await rm(join(root, "artifacts", "shards", "unit-jdk21"), {
+    recursive: true,
+    force: true,
+  });
+  const missing = await run(root, "aggregate");
+  assert.equal(missing.code, 1);
+  assert.match(missing.stdout, /SHARD_MISSING/);
+  await assert.rejects(readFile(join(root, "aggregate-sentinel"), "utf8"));
+});
+
 test("compiled CLI keeps warning identity drift advisory but enforces identity policy", async (t) => {
   const root = await project();
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -642,6 +767,20 @@ test("compiled CLI rejects invalid invocations and operational failures with exi
   const missing = await run(root, "check", "--config", "missing.yml");
   assert.equal(missing.code, 2);
   assert.match(missing.stderr, /Operational error/);
+
+  const aggregateWithoutConfig = await run(root, "aggregate");
+  assert.equal(aggregateWithoutConfig.code, 2);
+  assert.match(aggregateWithoutConfig.stderr, /Operational error/);
+  assert.match(aggregateWithoutConfig.stderr, /aggregation configuration is required/);
+
+  for (const arguments_ of [
+    ["aggregate", "--base-ref", "HEAD"],
+    ["aggregate", "--write"],
+  ]) {
+    const result = await run(root, ...arguments_);
+    assert.equal(result.code, 2, arguments_.join(" "));
+    assert.match(result.stderr, /Invalid invocation/);
+  }
 });
 
 test("compiled CLI rejects duplicate and incomplete options", async (t) => {
@@ -655,6 +794,9 @@ test("compiled CLI rejects duplicate and incomplete options", async (t) => {
     ["check", "--base-ref"],
     ["check", "--mode"],
     ["check", "--format"],
+    ["aggregate", "--config"],
+    ["aggregate", "--mode"],
+    ["aggregate", "--format"],
   ]) {
     const result = await run(root, ...arguments_);
     assert.equal(result.code, 2, arguments_.join(" "));

@@ -1,5 +1,6 @@
 import { parseDocument } from "yaml";
 import type {
+  AggregationConfig,
   Config,
   IdentityDetailsPolicy,
   IdentityPolicy,
@@ -45,6 +46,45 @@ const relativePath = (value: unknown, field: string): string => {
       `${field} must be a relative file path within the configuration root`,
     );
   return normalized;
+};
+
+const shard = (value: unknown, field: string): string => {
+  const id = stringValue(value, field);
+  if (
+    id === "." ||
+    id === ".." ||
+    id.includes("/") ||
+    id.includes("\\") ||
+    id.includes("\u0000")
+  )
+    throw new CoreValidationError(`${field} must be a single shard ID`);
+  return id;
+};
+
+const aggregation = (value: unknown): AggregationConfig => {
+  if (!isRecord(value))
+    throw new CoreValidationError("aggregation must be an object");
+  if (!Array.isArray(value.shards) || value.shards.length === 0)
+    throw new CoreValidationError("aggregation.shards must be a non-empty array");
+  if (!Array.isArray(value.reports) || value.reports.length === 0)
+    throw new CoreValidationError("aggregation.reports must be a non-empty array");
+  const shards = value.shards.map((item, index) =>
+    shard(item, `aggregation.shards[${index}]`),
+  );
+  if (new Set(shards).size !== shards.length)
+    throw new CoreValidationError("aggregation.shards must not contain a duplicate shard ID");
+  const reports = value.reports.map((item, index) =>
+    relativePath(item, `aggregation.reports[${index}]`),
+  );
+  if (new Set(reports).size !== reports.length)
+    throw new CoreValidationError(
+      "aggregation.reports must not contain a duplicate report path",
+    );
+  return {
+    root: relativePath(value.root, "aggregation.root"),
+    shards,
+    reports,
+  };
 };
 
 const policy = (value: unknown, field: string): SuitePolicy => {
@@ -163,6 +203,8 @@ export const loadConfig = (source: string | unknown): Config => {
     command: stringValue(value.command, "command"),
     reports,
     watched,
+    aggregation:
+      value.aggregation === undefined ? undefined : aggregation(value.aggregation),
     policy: {
       default: policy(value.policy.default, "policy.default"),
       protectedSuites,

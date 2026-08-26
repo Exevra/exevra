@@ -1,5 +1,7 @@
 export type FindingCode =
   | "REPORT_MISSING"
+  | "SHARD_MISSING"
+  | "SHARD_NO_TESTS_EXECUTED"
   | "NO_TESTS_EXECUTED"
   | "SUITE_BELOW_MINIMUM"
   | "SUITE_DROP_EXCEEDED"
@@ -39,12 +41,19 @@ export interface ProtectedSuitePolicy extends SuitePolicy {
   match: string;
 }
 
+export interface AggregationConfig {
+  root: string;
+  shards: string[];
+  reports: string[];
+}
+
 export interface Config {
   version: 1;
   baseline: string;
   command: string;
   reports: string[];
   watched: string[];
+  aggregation?: AggregationConfig;
   policy: {
     default: SuitePolicy;
     protectedSuites: ProtectedSuitePolicy[];

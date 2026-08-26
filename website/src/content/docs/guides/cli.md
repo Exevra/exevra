@@ -1,12 +1,12 @@
 ---
 title: CLI
-description: Install the CLI, then initialize, record, and check a baseline from the command line.
+description: Install the CLI, then initialize, record, check, or aggregate a baseline from the command line.
 ---
 
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.1.2
+npm install --save-dev @exevra-dev/cli@0.2.0
 ```
 
 Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
@@ -54,3 +54,18 @@ npx exevra check --config .exevra.yml --format github-actions
 `--mode enforce` is the default. It returns exit code 1 when at least one error finding exists. `--mode advisory` returns 0 even for error findings. Warning-only findings remain visible and do not fail enforce mode. `record` and `check` return 2 for an invalid invocation or an operational failure, such as unreadable configuration; `record` also returns 2 if it finishes with findings. Successful commands return 0.
 
 `check --base-ref <ref>` compares watched paths against that Git ref. Without a base ref, the command reports that changed-file comparison is unavailable.
+
+## Aggregate downloaded shard reports
+
+`aggregate` is included in `@exevra-dev/cli@0.2.0`.
+
+`aggregate` reads the explicit shard artifacts configured under `aggregation`, combines their JUnit suites, and evaluates the existing baseline. It never runs `command` or deletes report files.
+
+```sh
+npx exevra aggregate --config .exevra.yml
+npx exevra aggregate --config .exevra.yml --mode advisory
+npx exevra aggregate --config .exevra.yml --format json
+npx exevra aggregate --config .exevra.yml --format github-actions
+```
+
+It accepts `--config`, `--mode`, and `--format`; it does not accept `--base-ref`. Missing shard evidence is an error finding in enforce mode. See [Matrix and shard aggregation](./matrix-aggregation/) for the required artifact layout and CI examples.
