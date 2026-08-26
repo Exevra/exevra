@@ -623,6 +623,10 @@ test("compiled CLI aggregates shard reports in every output format", async (t) =
   );
   assert.equal(githubActions.code, 0);
   assert.match(githubActions.stdout, /^EXEVRA PASSED WITH WARNINGS/m);
+  assert.match(
+    githubActions.stdout,
+    /::warning title=EXEVRA NOTICE::Changed-file comparison is unavailable for aggregate checks\./,
+  );
 });
 
 test("compiled CLI aggregates missing shards with enforce and advisory modes", async (t) => {
