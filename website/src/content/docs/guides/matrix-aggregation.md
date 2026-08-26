@@ -1,9 +1,9 @@
 ---
 title: Matrix and shard aggregation
-description: Preview the unreleased source-only workflow for checking downloaded JUnit artifacts without running tests again.
+description: Check downloaded JUnit artifacts without running tests again.
 ---
 
-> **Unreleased:** Matrix aggregation is available only when running Exevra from this source branch. It is not included in `@exevra-dev/cli@0.1.2`; installing that package and following the examples below makes the CLI reject `aggregate` as an invalid command.
+> **Target release:** Matrix aggregation is planned for `@exevra-dev/cli@0.2.0` and becomes available after the npm publish workflow completes on `main`.
 
 Use `aggregate` when test shards run in separate CI jobs. Your CI provider uploads each shard's JUnit reports; a collector job downloads them into the configured layout, then Exevra evaluates their combined suites against the existing baseline.
 
@@ -63,7 +63,7 @@ npx exevra aggregate --config .exevra.yml --format github-actions
 
 ## GitHub Actions example
 
-The matrix job uploads only the report directory. The collector downloads each artifact into the configured shard directory, then runs the CLI built from this source branch.
+The matrix job uploads only the report directory. The collector downloads each artifact into the configured shard directory, then runs the installed CLI.
 
 ```yaml
 jobs:

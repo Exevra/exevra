@@ -3,7 +3,7 @@ title: Output and exit codes
 description: Select text, JSON, or GitHub Actions output and interpret outcomes.
 ---
 
-> **Unreleased:** References to `aggregate` describe the source branch only. `@exevra-dev/cli@0.1.2` does not include that command.
+References to `aggregate` describe the target `0.2.0` release. The command becomes available from npm after the publish workflow completes on `main`.
 
 `check` and `aggregate` support three formats. `text` is the default and includes the final outcome, findings, remediation, notices, and opted-in identity names. `json` writes the outcome, safe findings, notices, and suite execution summaries. `github-actions` writes workflow-command annotations for safe findings and notices.
 
