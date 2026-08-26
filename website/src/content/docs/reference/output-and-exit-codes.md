@@ -3,7 +3,7 @@ title: Output and exit codes
 description: Select text, JSON, or GitHub Actions output and interpret outcomes.
 ---
 
-References to `aggregate` describe the target `0.2.0` release. The command becomes available from npm after the publish workflow completes on `main`.
+References to `aggregate` describe the `0.2.0` release.
 
 `check` and `aggregate` support three formats. `text` is the default and includes the final outcome, findings, remediation, notices, and opted-in identity names. `json` writes the outcome, safe findings, notices, and suite execution summaries. `github-actions` writes workflow-command annotations for safe findings and notices.
 

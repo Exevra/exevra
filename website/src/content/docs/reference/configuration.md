@@ -37,7 +37,7 @@ policy:
 
 ## Aggregation
 
-The `aggregation` configuration and `aggregate` command are part of the target `0.2.0` release. The npm package becomes available after the publish workflow completes on `main`.
+The `aggregation` configuration and `aggregate` command are part of the `0.2.0` release.
 
 `aggregation` is optional and is used only by `aggregate`. It needs a relative `root`, a non-empty list of unique `shards`, and a non-empty list of shard-relative JUnit `reports`. A shard is one directory name: it cannot contain a separator, `.`, `..`, or NUL.
 

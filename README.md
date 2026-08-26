@@ -57,7 +57,7 @@ npx exevra record --config .exevra.yml --write
 
 ## Matrix and shard aggregation
 
-> **Target release:** Matrix aggregation is planned for `@exevra-dev/cli@0.2.0`. It becomes available from npm after the publish workflow completes on `main`.
+Matrix aggregation is included in `@exevra-dev/cli@0.2.0`.
 
 For tests split across CI jobs, upload each shard's JUnit artifact and download it into an explicit `aggregation.root/<shard>` layout in one collector job. Then run:
 

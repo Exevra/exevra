@@ -34,13 +34,13 @@ jobs:
 
 `fetch-depth: 0` gives pull-request checks the base commit needed for watched-path comparison. `persist-credentials: false` prevents the repository command from inheriting checkout credentials. Exevra's Action runtime is Node 24; the example sets Node 22 for the repository command and dependencies.
 
-`Exevra/exevra@v0.2.0` is the target release tag. The public Action can be used from any repository after the release workflow publishes it. Use `uses: ./` only when testing a checked-out copy of Exevra itself.
+`Exevra/exevra@v0.2.0` is the versioned release tag. The public Action can be used from any repository after the release workflow publishes it. Use `uses: ./` only when testing a checked-out copy of Exevra itself.
 
 In `enforce` mode, error findings fail the Action. Warning findings produce annotations without failing it. `advisory` keeps all findings nonblocking. The Action adds an escaped text summary and does not require a write token or call the GitHub API.
 
 ## Matrix jobs
 
-> **Target release:** The `aggregate` CLI collector is planned for `@exevra-dev/cli@0.2.0`. The Action and npm package tags become available after the publish workflow completes on `main`.
+The `aggregate` CLI collector is included in `@exevra-dev/cli@0.2.0`; use it after matrix jobs have uploaded and downloaded their reports.
 
 The Action runs the configured command, so use the CLI collector after matrix jobs have uploaded and downloaded their JUnit artifacts. `aggregate` never runs or cleans `command`; it reads only the explicit artifact layout from `aggregation`.
 

@@ -3,7 +3,7 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
-## v0.2.0 (target)
+## v0.2.0
 
 Adds CI-neutral `exevra aggregate` for explicit matrix and shard report collection. The command reads already-downloaded JUnit artifacts, combines their suites, evaluates the existing baseline, and never reruns or cleans the configured test command. It supports text, JSON, and GitHub Actions output and reports missing shards, missing reports, and zero-test shards.
 

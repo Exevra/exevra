@@ -57,7 +57,7 @@ npx exevra check --config .exevra.yml --format github-actions
 
 ## Aggregate downloaded shard reports
 
-> **Target release:** `aggregate` is planned for `@exevra-dev/cli@0.2.0`. It becomes available from npm after the publish workflow completes on `main`.
+`aggregate` is included in `@exevra-dev/cli@0.2.0`.
 
 `aggregate` reads the explicit shard artifacts configured under `aggregation`, combines their JUnit suites, and evaluates the existing baseline. It never runs `command` or deletes report files.
 
