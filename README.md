@@ -24,7 +24,7 @@ See every command and option with `npx exevra --help` (or `npx exevra -h`).
 Install Exevra in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.2.0
+npm install --save-dev @exevra-dev/cli@0.3.0
 ```
 
 For a Node project with a `test` script, initialize without wiring reporter flags by hand:
@@ -70,7 +70,7 @@ Exevra is JUnit XML based, not tied to one test framework. It runs the configure
 Built-in setup:
 
 - **Maven Surefire/Failsafe** — `npx exevra init --maven` detects the standard report directories.
-- **Vitest** — the development `init` flow detects Vitest and adds its JUnit reporter flags without editing `package.json`. Released `0.2.0` uses the explicit setup form above.
+- **Vitest** — `npx exevra init` detects Vitest and adds its JUnit reporter flags without editing `package.json`.
 
 Other ecosystems work when their JUnit reporter or converter is configured explicitly:
 
@@ -91,7 +91,7 @@ This list is illustrative, not a whitelist. A framework that cannot produce JUni
 
 ## Matrix and shard aggregation
 
-Matrix aggregation is included in `@exevra-dev/cli@0.2.0`.
+Matrix aggregation is included in `@exevra-dev/cli@0.3.0`.
 
 For tests split across CI jobs, upload each shard's JUnit artifact and download it into an explicit `aggregation.root/<shard>` layout in one collector job. Then run:
 
@@ -126,7 +126,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.2.0
+      - uses: Exevra/exevra@v0.3.0
         with:
           config: .exevra.yml
           mode: enforce

@@ -8,7 +8,7 @@ Use Node 22 or later. Exevra runs the command in your configuration through Bash
 Install the CLI as a development dependency in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.2.0
+npm install --save-dev @exevra-dev/cli@0.3.0
 ```
 
 For a Node project with a `package.json` test script, let Exevra detect the package manager, test framework, command, and JUnit output:

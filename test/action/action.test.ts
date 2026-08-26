@@ -404,15 +404,15 @@ test("published action metadata and committed bundle exist", async () => {
   await readFile(join(process.cwd(), "dist", "index.js"), "utf8");
 });
 
-test("release package version is synchronized at 0.2.0", async () => {
+test("release package version is synchronized at 0.3.0", async () => {
   const manifest = JSON.parse(
     await readFile(join(process.cwd(), "package.json"), "utf8"),
   ) as { version: string };
   const lockfile = JSON.parse(
     await readFile(join(process.cwd(), "package-lock.json"), "utf8"),
   ) as { packages: Record<string, { version?: string }> };
-  assert.equal(manifest.version, "0.2.0");
-  assert.equal(lockfile.packages[""]?.version, "0.2.0");
+  assert.equal(manifest.version, "0.3.0");
+  assert.equal(lockfile.packages[""]?.version, "0.3.0");
 });
 
 test("release workflows and documentation pin current v7 GitHub Actions", async () => {

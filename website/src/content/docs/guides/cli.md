@@ -6,7 +6,7 @@ description: Install the CLI, then initialize, record, check, or aggregate a bas
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.2.0
+npm install --save-dev @exevra-dev/cli@0.3.0
 ```
 
 Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
@@ -18,7 +18,7 @@ Exevra does not call framework APIs. It runs your configured POSIX command and e
 | Ecosystem | JUnit output | Exevra setup |
 | --- | --- | --- |
 | Maven Surefire/Failsafe | Standard `TEST-*.xml` directories | Built-in `init --maven` |
-| Vitest | `--reporter=junit --outputFile=...` | Zero-argument Node init on the development branch; explicit flags in `0.2.0` |
+| Vitest | `--reporter=junit --outputFile=...` | Zero-argument Node init in `0.3.0` |
 | Jest | `jest-junit` | Explicit command/config |
 | Playwright | JUnit reporter | Explicit command/config |
 | Mocha | `mocha-junit-reporter` | Explicit command/config |
@@ -87,7 +87,7 @@ npx exevra check --config .exevra.yml --format github-actions
 
 ## Aggregate downloaded shard reports
 
-`aggregate` is included in `@exevra-dev/cli@0.2.0`.
+`aggregate` is included in `@exevra-dev/cli@0.3.0` (introduced in `0.2.0`).
 
 `aggregate` reads the explicit shard artifacts configured under `aggregation`, combines their JUnit suites, and evaluates the existing baseline. It never runs `command` or deletes report files.
 
