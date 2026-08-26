@@ -34,3 +34,35 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
       - run: npm run docs:check
+  node-integration:
+    strategy:
+      matrix:
+        include:
+          - path: test/fixtures/node/vitest
+            init_mode: auto
+          - path: test/fixtures/node/jest
+            init_mode: explicit
+          - path: test/fixtures/node/playwright
+            init_mode: explicit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: ${{ matrix.path }}
+      - run: npm test
+        working-directory: ${{ matrix.path }}
+      - if: matrix.init_mode == 'auto'
+        run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" init
+        working-directory: ${{ matrix.path }}
+      - if: matrix.init_mode == 'explicit'
+        run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" init --command "npm test" --report artifacts/junit.xml
+        working-directory: ${{ matrix.path }}
+      - run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
+        working-directory: ${{ matrix.path }}
