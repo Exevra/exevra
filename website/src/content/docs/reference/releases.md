@@ -7,7 +7,7 @@ description: Track the implemented behavior in Exevra v0 releases.
 
 Adds CI-neutral `exevra aggregate` for explicit matrix and shard report collection. The command reads already-downloaded JUnit artifacts, combines their suites, evaluates the existing baseline, and never reruns or cleans the configured test command. It supports text, JSON, and GitHub Actions output and reports missing shards, missing reports, and zero-test shards.
 
-The npm package is made by `.github/workflows/publish.yml`, not by a local publish step. A push to `main` that changes `package.json` or `package-lock.json` triggers the workflow; it installs dependencies, runs `npm test`, typecheck, and bundle verification, skips versions already present on npm, and publishes new versions with npm trusted publishing.
+The npm package is made by `.github/workflows/publish.yml`, not by a local publish step. A push to `main` that changes `package.json` or `package-lock.json` triggers the workflow; it installs dependencies, runs `npm test`, typecheck, and bundle verification, skips versions already present on npm, and publishes new versions with npm trusted publishing. After it succeeds, create and verify the matching GitHub Action tag separately; this workflow does not create Git tags or GitHub releases.
 
 ## v0.1.2
 
