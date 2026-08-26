@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-26T00:00:00.000Z",
+  "command": "node tools/aggregate-sentinel.mjs",
+  "reports": ["target/surefire-reports/TEST-*.xml"],
+  "suites": [
+    {
+      "name": "unit",
+      "executed": 2,
+      "skipped": 0,
+      "testIdsHash": "sha256:4acbd280444ec30ed46c776f2957044fd928cabdfe635cc447474139f7f2fced"
+    }
+  ]
+}

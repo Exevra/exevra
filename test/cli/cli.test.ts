@@ -17,14 +17,23 @@ import test from "node:test";
 
 const execute = promisify(execFile);
 const fixture = join(process.cwd(), "test", "fixtures", "project");
+const aggregationFixture = join(
+  process.cwd(),
+  "test",
+  "fixtures",
+  "aggregation",
+);
 const packageManifest = JSON.parse(
   await readFile(join(process.cwd(), "package.json"), "utf8"),
 ) as { bin: { exevra: string } };
 const cli = join(process.cwd(), packageManifest.bin.exevra);
 
-const project = async (prefix = "exevra-cli-"): Promise<string> => {
+const project = async (
+  prefix = "exevra-cli-",
+  source = fixture,
+): Promise<string> => {
   const root = await mkdtemp(join(tmpdir(), prefix));
-  await cp(fixture, root, { recursive: true });
+  await cp(source, root, { recursive: true });
   return root;
 };
 
@@ -642,6 +651,27 @@ test("compiled CLI aggregates missing shards with enforce and advisory modes", a
   const advisory = await run(root, "aggregate", "--mode", "advisory");
   assert.equal(advisory.code, 0);
   assert.match(advisory.stdout, /SHARD_MISSING/);
+});
+
+test("compiled CLI aggregates a two-shard fixture without running its command", async (t) => {
+  const root = await project("exevra-aggregation-", aggregationFixture);
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const complete = await run(root, "aggregate", "--format", "json");
+  assert.equal(complete.code, 0, complete.stderr);
+  assert.deepEqual(JSON.parse(complete.stdout).suites, [
+    { name: "unit", executed: 2, skipped: 0 },
+  ]);
+  await assert.rejects(readFile(join(root, "aggregate-sentinel"), "utf8"));
+
+  await rm(join(root, "artifacts", "shards", "unit-jdk21"), {
+    recursive: true,
+    force: true,
+  });
+  const missing = await run(root, "aggregate");
+  assert.equal(missing.code, 1);
+  assert.match(missing.stdout, /SHARD_MISSING/);
+  await assert.rejects(readFile(join(root, "aggregate-sentinel"), "utf8"));
 });
 
 test("compiled CLI keeps warning identity drift advisory but enforces identity policy", async (t) => {
