@@ -233,6 +233,24 @@ test("loads and normalizes aggregation configuration", () => {
   );
 });
 
+test("rejects duplicate normalized aggregation reports", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        ...valid,
+        aggregation: {
+          root: "artifacts/shards",
+          shards: ["unit-jdk17"],
+          reports: [
+            "target//surefire-reports/TEST-*.xml",
+            "target/surefire-reports/TEST-*.xml",
+          ],
+        },
+      }),
+    /aggregation\.reports.*duplicate report path/,
+  );
+});
+
 test("rejects invalid aggregation configuration", () => {
   const aggregation = {
     root: "artifacts/shards",

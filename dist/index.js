@@ -42804,10 +42804,13 @@ const aggregation = (value) => {
     const shards = value.shards.map((item, index) => shard(item, `aggregation.shards[${index}]`));
     if (new Set(shards).size !== shards.length)
         throw new CoreValidationError("aggregation.shards must not contain a duplicate shard ID");
+    const reports = value.reports.map((item, index) => relativePath(item, `aggregation.reports[${index}]`));
+    if (new Set(reports).size !== reports.length)
+        throw new CoreValidationError("aggregation.reports must not contain a duplicate report path");
     return {
         root: relativePath(value.root, "aggregation.root"),
         shards,
-        reports: value.reports.map((item, index) => relativePath(item, `aggregation.reports[${index}]`)),
+        reports,
     };
 };
 const policy = (value, field) => {
