@@ -37,3 +37,9 @@ jobs:
 `Exevra/exevra@v0.1.2` is the versioned release tag. The public Action can be used from any repository. Use `uses: ./` only when testing a checked-out copy of Exevra itself.
 
 In `enforce` mode, error findings fail the Action. Warning findings produce annotations without failing it. `advisory` keeps all findings nonblocking. The Action adds an escaped text summary and does not require a write token or call the GitHub API.
+
+## Matrix jobs
+
+The Action runs the configured command, so use the CLI collector after matrix jobs have uploaded and downloaded their JUnit artifacts. `aggregate` never runs or cleans `command`; it reads only the explicit artifact layout from `aggregation`.
+
+See [Matrix and shard aggregation](./matrix-aggregation/) for a complete matrix upload/download example and the required missing-shard behavior.
