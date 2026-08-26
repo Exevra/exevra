@@ -34,19 +34,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: mkdir aggregate-fixture && cp test/fixtures/aggregation/.exevra.yml aggregate-fixture/.exevra.yml && cp -R test/fixtures/aggregation/.exevra aggregate-fixture/.exevra
+      - run: cp test/fixtures/aggregation/.exevra.yml .exevra.yml && cp -R test/fixtures/aggregation/.exevra .exevra
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: exevra-unit-jdk17
-          path: aggregate-fixture/artifacts/shards/unit-jdk17/target/surefire-reports
+          path: artifacts/shards/unit-jdk17/target/surefire-reports
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: exevra-unit-jdk21
-          path: aggregate-fixture/artifacts/shards/unit-jdk21/target/surefire-reports
-      - run: node build/src/cli/index.js aggregate --config aggregate-fixture/.exevra.yml --format github-actions
-      - run: rm -rf aggregate-fixture/artifacts/shards/unit-jdk21
+          path: artifacts/shards/unit-jdk21/target/surefire-reports
+      - run: node build/src/cli/index.js aggregate --config .exevra.yml --format github-actions
+      - run: rm -rf artifacts/shards/unit-jdk21
       - run: |
-          if node build/src/cli/index.js aggregate --config aggregate-fixture/.exevra.yml > aggregate-missing.log 2>&1; then
+          if node build/src/cli/index.js aggregate --config .exevra.yml > aggregate-missing.log 2>&1; then
             cat aggregate-missing.log
             exit 1
           fi
