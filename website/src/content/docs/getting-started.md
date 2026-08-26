@@ -11,7 +11,17 @@ Install the CLI as a development dependency in the repository you want to protec
 npm install --save-dev @exevra-dev/cli@0.2.0
 ```
 
-Initialize Exevra with a test command that writes JUnit XML. The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the command, and creates the first baseline. It never overwrites an existing configuration.
+For a Node project with a `package.json` test script, let Exevra detect the package manager, test framework, command, and JUnit output:
+
+```sh
+npx exevra init
+```
+
+Vitest projects without JUnit flags receive `--reporter=junit --outputFile=artifacts/junit.xml` in the generated Exevra command; Exevra does not edit `package.json`. Existing JUnit output flags are reused. Other frameworks need an explicit JUnit-producing command when Exevra cannot configure them safely.
+
+The command writes `.exevra.yml`, runs the test command, and creates the first baseline. It never overwrites an existing configuration.
+
+For an explicit command, use:
 
 ```sh
 npx exevra init \
@@ -36,9 +46,10 @@ npx exevra record --config .exevra.yml
 ```
 
 Run `check` in CI or locally. It clears configured report paths before it executes the command, so an old report cannot satisfy the check.
+The conventional `.exevra.yml` path is used automatically; pass `--config` only for a different location.
 
 ```sh
-npx exevra check --config .exevra.yml
+npx exevra check
 ```
 
 See the [CLI guide](../guides/cli/) for modes and output formats, configure the [GitHub Action](../guides/github-action/), or run Exevra in [Generic CI and Jenkins](../guides/generic-ci/).

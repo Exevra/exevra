@@ -37,6 +37,61 @@ const project = async (
   return root;
 };
 
+const nodeProject = async (): Promise<string> => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-node-init-"));
+  await cp(join(fixture, "tools"), join(root, "tools"), { recursive: true });
+  await writeFile(join(root, "runner-config.json"), '{"mode":"pass"}');
+  await writeFile(
+    join(root, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "node-init-fixture",
+        private: true,
+        scripts: {
+          test: "node tools/fake-junit-command.mjs artifacts/junit.xml --reporter=junit --outputFile=artifacts/junit.xml",
+        },
+        devDependencies: { vitest: "^3.0.0" },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(join(root, "package-lock.json"), "{}\n");
+  return root;
+};
+
+const autoVitestProject = async (): Promise<string> => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-vitest-init-"));
+  const bin = join(root, "node_modules", ".bin");
+  await mkdir(bin, { recursive: true });
+  await writeFile(
+    join(bin, "vitest"),
+    "#!/usr/bin/env node\n" +
+      "import { mkdir, writeFile } from 'node:fs/promises';\n" +
+      "import { dirname } from 'node:path';\n" +
+      "const output = process.argv.find((value) => value.startsWith('--outputFile='))?.slice('--outputFile='.length);\n" +
+      "if (!process.argv.includes('--reporter=junit') || output === undefined) process.exit(1);\n" +
+      "await mkdir(dirname(output), { recursive: true });\n" +
+      "await writeFile(output, '<testsuite name=\"unit\"><testcase classname=\"unit\" name=\"test-1\"/></testsuite>\\n');\n",
+  );
+  await chmod(join(bin, "vitest"), 0o755);
+  await writeFile(
+    join(root, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "vitest-init-fixture",
+        private: true,
+        scripts: { test: "vitest run" },
+        devDependencies: { vitest: "^3.0.0" },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(join(root, "package-lock.json"), "{}\n");
+  return root;
+};
+
 const writeAggregationConfig = async (root: string): Promise<void> => {
   await writeFile(
     join(root, ".exevra.yml"),
@@ -109,7 +164,7 @@ test("compiled CLI prints help for standard help flags", async (t) => {
   const expected =
     "Usage: exevra <command> [options]\n\n" +
     "Commands:\n" +
-    "  init --command <command> --report <path>\n" +
+    "  init [--command <command> --report <path>]\n" +
     "  init --maven\n" +
     "  record [--config <path>] [--write]\n" +
     "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
@@ -154,6 +209,126 @@ test("compiled CLI initializes standard Surefire and Failsafe reports", async (t
   assert.match(config, /target\/surefire-reports\/TEST-\*\.xml/);
   assert.match(config, /target\/failsafe-reports\/TEST-\*\.xml/);
   await readFile(join(root, ".exevra", "baseline.json"), "utf8");
+});
+
+test("compiled CLI initializes a Node project without init flags", async (t) => {
+  const root = await nodeProject();
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const initialized = await run(root, "init");
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  assert.match(initialized.stdout, /Detected Vitest/);
+  assert.match(initialized.stdout, /Test command: npm test/);
+  assert.match(initialized.stdout, /JUnit report: artifacts\/junit\.xml/);
+  assert.match(initialized.stdout, /Created config: \.exevra\.yml/);
+  assert.match(initialized.stdout, /Created baseline: \.exevra\/baseline\.json/);
+  assert.match(initialized.stdout, /Run:\n  npx exevra check/);
+  assert.match(
+    await readFile(join(root, ".exevra.yml"), "utf8"),
+    /command: npm test/,
+  );
+  await readFile(join(root, ".exevra", "baseline.json"), "utf8");
+});
+
+test("compiled CLI uses the detected pnpm test command", async (t) => {
+  const root = await nodeProject();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, "package-lock.json"));
+  await writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: 9\n");
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "pnpm"),
+    "#!/usr/bin/env sh\n" +
+      "node tools/fake-junit-command.mjs artifacts/junit.xml --reporter=junit --outputFile=artifacts/junit.xml\n",
+  );
+  await chmod(join(bin, "pnpm"), 0o755);
+
+  const initialized = await runWithEnvironment(
+    root,
+    { PATH: `${bin}:${process.env.PATH ?? ""}` },
+    "init",
+  );
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  assert.match(initialized.stdout, /Test command: pnpm test/);
+  assert.match(
+    await readFile(join(root, ".exevra.yml"), "utf8"),
+    /command: pnpm test/,
+  );
+});
+
+test("compiled CLI invokes the package test script through Bun", async (t) => {
+  const root = await nodeProject();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, "package-lock.json"));
+  await writeFile(join(root, "bun.lock"), "lockfileVersion: 1\n");
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "bun"),
+    "#!/usr/bin/env sh\n" +
+      "node tools/fake-junit-command.mjs artifacts/junit.xml --reporter=junit --outputFile=artifacts/junit.xml\n",
+  );
+  await chmod(join(bin, "bun"), 0o755);
+
+  const initialized = await runWithEnvironment(
+    root,
+    { PATH: `${bin}:${process.env.PATH ?? ""}` },
+    "init",
+  );
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  assert.match(initialized.stdout, /Test command: bun run test/);
+  assert.match(
+    await readFile(join(root, ".exevra.yml"), "utf8"),
+    /command: bun run test/,
+  );
+});
+
+test("compiled CLI configures JUnit output for Vitest without flags", async (t) => {
+  const root = await autoVitestProject();
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const initialized = await run(root, "init");
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  assert.match(
+    initialized.stdout,
+    /Test command: npm test -- --reporter=junit --outputFile=artifacts\/junit\.xml/,
+  );
+  assert.match(
+    await readFile(join(root, ".exevra.yml"), "utf8"),
+    /command: npm test -- --reporter=junit --outputFile=artifacts\/junit\.xml/,
+  );
+  await readFile(join(root, ".exevra", "baseline.json"), "utf8");
+});
+
+test("compiled CLI explains when a Node test script has no detectable JUnit output", async (t) => {
+  const root = await nodeProject();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const manifest = JSON.parse(
+    await readFile(join(root, "package.json"), "utf8"),
+  ) as {
+    scripts: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
+  manifest.scripts.test = "node tools/fake-junit-command.mjs artifacts/junit.xml";
+  manifest.devDependencies = {};
+  await writeFile(join(root, "package.json"), `${JSON.stringify(manifest)}\n`);
+
+  const initialized = await run(root, "init");
+
+  assert.equal(initialized.code, 2);
+  assert.equal(
+    initialized.stderr,
+    "Operational error: unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report\n",
+  );
+  await assert.rejects(readFile(join(root, ".exevra.yml")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(root, ".exevra", "baseline.json")), {
+    code: "ENOENT",
+  });
 });
 
 test("compiled CLI initializes when only standard Surefire reports exist", async (t) => {
@@ -493,7 +668,6 @@ test("compiled CLI rejects invalid init invocations", async (t) => {
   const root = await project();
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const arguments_ of [
-    ["init"],
     ["init", "--command", "value"],
     ["init", "--report", "artifacts/junit.xml"],
     ["init", "--command", "value", "--command", "value"],

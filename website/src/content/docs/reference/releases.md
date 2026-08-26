@@ -9,6 +9,10 @@ Adds CI-neutral `exevra aggregate` for explicit matrix and shard report collecti
 
 The npm package is made by `.github/workflows/publish.yml`, not by a local publish step. A push to `main` that changes `package.json` or `package-lock.json` triggers the workflow; it installs dependencies, runs `npm test`, typecheck, and bundle verification, skips versions already present on npm, and publishes new versions with npm trusted publishing. After it succeeds, create and verify the matching GitHub Action tag separately; this workflow does not create Git tags or GitHub releases.
 
+## Unreleased
+
+Adds zero-argument `exevra init` for Node projects. It detects the package manager, common test frameworks, and existing JUnit output from `package.json`; Vitest projects can receive safe JUnit reporter flags in the generated Exevra command without changing `package.json`. Projects that need unsupported reporter configuration receive an explicit fallback error.
+
 ## v0.1.2
 
 Adds `exevra init --maven`, which runs `mvn verify` and configures standard Surefire and Failsafe `TEST-*.xml` report patterns. The directories are optional independently, so Maven projects with unit tests only, integration tests only, or both can initialize without custom configuration. Custom Maven report directories and `pom.xml` parsing remain unsupported.

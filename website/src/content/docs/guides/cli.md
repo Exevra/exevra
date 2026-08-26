@@ -13,6 +13,14 @@ Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and
 
 ## Initialize a JUnit project
 
+In a Node project with `package.json` and a `test` script, the zero-argument form detects the package manager, recognizes common Node test frameworks, and creates the first baseline:
+
+```sh
+npx exevra init
+```
+
+Vitest projects are configured by appending JUnit reporter flags to the generated Exevra command. Existing JUnit output flags are reused, and `package.json` is never edited. If Exevra cannot identify a safe JUnit output, it explains the missing setup; use the explicit form below.
+
 The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the test command, and creates the first baseline. It never overwrites an existing configuration.
 
 For v0, `init` accepts ASCII characters only in the configuration filename, report path, and generated baseline path. The containing workspace directory may use non-ASCII characters.
@@ -43,9 +51,10 @@ npx exevra record --config .exevra.yml --write
 Use `--write` only after reviewing an intended execution-contract change. See [Baselines](../baselines/) for the review workflow.
 
 `check` runs the command again and compares fresh reports with the committed baseline.
+It uses `.exevra.yml` by default; `--config` is only needed for a nonstandard path.
 
 ```sh
-npx exevra check --config .exevra.yml
+npx exevra check
 npx exevra check --config .exevra.yml --mode advisory
 npx exevra check --config .exevra.yml --format json
 npx exevra check --config .exevra.yml --format github-actions

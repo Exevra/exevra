@@ -43352,7 +43352,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   z6: () => (/* reexport */ check)
 });
 
-// UNUSED EXPORTS: RuntimeError, aggregate, assertSafeInRootPath, changedFiles, initialize, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
+// UNUSED EXPORTS: RuntimeError, aggregate, assertSafeInRootPath, changedFiles, initialize, initializeNode, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
 
 // EXTERNAL MODULE: ./build/src/core/index.js + 6 modules
 var core = __nccwpck_require__(3290);
@@ -43909,6 +43909,89 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
 
 
 const generatedBaselinePath = ".exevra/baseline.json";
+const defaultNodeReportPath = "artifacts/junit.xml";
+const junitDetectionError = "unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report";
+const fileExists = async (path) => {
+    try {
+        await lstat(path);
+        return true;
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return false;
+        throw error;
+    }
+};
+const packageManagerFor = async (root, manifest) => {
+    if (typeof manifest.packageManager === "string") {
+        const declared = manifest.packageManager.split("@", 1)[0];
+        if (["npm", "pnpm", "yarn", "bun"].includes(declared))
+            return declared;
+    }
+    for (const [lockfile, packageManager] of [
+        ["pnpm-lock.yaml", "pnpm"],
+        ["yarn.lock", "yarn"],
+        ["bun.lockb", "bun"],
+        ["bun.lock", "bun"],
+        ["package-lock.json", "npm"],
+    ]) {
+        if (await fileExists(join(root, lockfile)))
+            return packageManager;
+    }
+    return "npm";
+};
+const frameworkFor = (manifest, script) => {
+    const dependencies = new Set([
+        ...Object.keys(manifest.dependencies ?? {}),
+        ...Object.keys(manifest.devDependencies ?? {}),
+    ]);
+    if (dependencies.has("vitest") || /\bvitest\b/i.test(script))
+        return "Vitest";
+    if (dependencies.has("jest") ||
+        dependencies.has("@jest/globals") ||
+        /\bjest\b/i.test(script))
+        return "Jest";
+    if (dependencies.has("@playwright/test") ||
+        /\bplaywright\b/i.test(script))
+        return "Playwright";
+    return "Node test runner";
+};
+const reportPathFor = (script) => {
+    if (!/\bjunit\b/i.test(script))
+        return undefined;
+    const match = /--(?:outputFile|output-file|junit-output|junitOutput)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/i.exec(script);
+    const reportPath = match?.slice(1).find((value) => value !== undefined);
+    if (reportPath === undefined)
+        throw new RuntimeError(junitDetectionError);
+    return reportPath;
+};
+const detectNodeProject = async (root) => {
+    let manifest;
+    try {
+        manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    }
+    catch {
+        throw new RuntimeError("unable to detect a Node project: package.json is missing or invalid");
+    }
+    const script = manifest.scripts?.test;
+    if (typeof script !== "string" || script.trim() === "")
+        throw new RuntimeError("unable to detect a Node test command: package.json scripts.test is missing");
+    const packageManager = await packageManagerFor(root, manifest);
+    const framework = frameworkFor(manifest, script);
+    const configuredReportPath = reportPathFor(script);
+    const reportPath = configuredReportPath ?? defaultNodeReportPath;
+    const testCommand = packageManager === "bun" ? "bun run test" : `${packageManager} test`;
+    if (configuredReportPath === undefined && framework !== "Vitest")
+        throw new RuntimeError(junitDetectionError);
+    return {
+        command: configuredReportPath === undefined
+            ? `${testCommand} -- --reporter=junit --outputFile=${defaultNodeReportPath}`
+            : testCommand,
+        framework,
+        packageManager,
+        reportPath,
+    };
+};
 const assertAsciiRolePath = (role, path) => {
     if (/[^\x00-\x7f]/.test(path))
         throw new RuntimeError(`initialization ${role} path must use ASCII characters only`);
@@ -43998,6 +44081,16 @@ const initialize = async ({ configPath, command, reportPath, }) => {
         throw new RuntimeError(`initial baseline recording failed: ${codes.join(", ")}`);
     }
     return { configPath: target, baselinePath, record: recordResult };
+};
+const initializeNode = async (configPath) => {
+    const root = dirname(resolve(configPath));
+    const detected = await detectNodeProject(root);
+    const result = await initialize({
+        configPath,
+        command: detected.command,
+        reportPath: detected.reportPath,
+    });
+    return { ...result, ...detected };
 };
 
 ;// CONCATENATED MODULE: ./build/src/runtime/index.js
