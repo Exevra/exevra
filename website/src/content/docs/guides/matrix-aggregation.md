@@ -83,15 +83,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
       - run: npm ci
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: exevra-unit-jdk17
-          path: artifacts/shards/unit-jdk17
+          path: artifacts/shards/unit-jdk17/target/surefire-reports
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: exevra-unit-jdk21
-          path: artifacts/shards/unit-jdk21
+          path: artifacts/shards/unit-jdk21/target/surefire-reports
       - run: npx exevra aggregate --config .exevra.yml --format github-actions
 ```
 
