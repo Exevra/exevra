@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import test from "node:test";
 import { loadConfig } from "../../src/core/index.js";
 import {
@@ -26,6 +26,7 @@ import {
   cleanReports,
   runConfiguredCommand,
 } from "../../src/runtime/command.js";
+import { loadAggregatedReports } from "../../src/runtime/reports.js";
 
 const fixture = join(process.cwd(), "test", "fixtures", "project");
 
@@ -37,6 +38,106 @@ const project = async (prefix = "exevra-runtime-"): Promise<string> => {
 
 const mode = (root: string, value: string) =>
   writeFile(join(root, "runner-config.json"), JSON.stringify({ mode: value }));
+
+test("loadAggregatedReports groups explicit shard reports deterministically", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const [shard, testName] of [
+    ["unit-jdk17", "jdk17"],
+    ["unit-jdk21", "jdk21"],
+  ]) {
+    const path = join(
+      root,
+      "artifacts",
+      "shards",
+      shard,
+      "target",
+      "surefire-reports",
+      "TEST-unit.xml",
+    );
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(
+      path,
+      `<testsuite name="unit"><testcase classname="unit" name="${testName}"/></testsuite>`,
+    );
+  }
+
+  const result = await loadAggregatedReports(root, {
+    root: "artifacts/shards",
+    shards: ["unit-jdk21", "unit-jdk17"],
+    reports: ["target/surefire-reports/TEST-*.xml"],
+  });
+
+  assert.deepEqual(result.missingShards, []);
+  assert.deepEqual(result.missingReports, []);
+  assert.deepEqual(
+    result.shards.map((shard) => shard.shard),
+    ["unit-jdk17", "unit-jdk21"],
+  );
+  assert.deepEqual(
+    result.shards.map((shard) =>
+      shard.reportPaths.map((path) => relative(root, path)),
+    ),
+    [
+      ["artifacts/shards/unit-jdk17/target/surefire-reports/TEST-unit.xml"],
+      ["artifacts/shards/unit-jdk21/target/surefire-reports/TEST-unit.xml"],
+    ],
+  );
+  assert.equal(
+    result.shards.flatMap((shard) => shard.suites).reduce(
+      (total, suite) => total + suite.executed,
+      0,
+    ),
+    2,
+  );
+});
+
+test("loadAggregatedReports records missing shards and report patterns", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "artifacts", "shards", "unit-empty"), {
+    recursive: true,
+  });
+
+  const result = await loadAggregatedReports(root, {
+    root: "artifacts/shards",
+    shards: ["unit-missing", "unit-empty"],
+    reports: ["target/surefire-reports/TEST-*.xml"],
+  });
+
+  assert.deepEqual(result.shards.map((shard) => shard.shard), ["unit-empty"]);
+  assert.deepEqual(result.missingShards, ["unit-missing"]);
+  assert.deepEqual(result.missingReports, [
+    "artifacts/shards/unit-empty/target/surefire-reports/TEST-*.xml",
+  ]);
+});
+
+test("loadAggregatedReports rejects a symlinked shard report parent", async (t) => {
+  const root = await project();
+  const outside = await mkdtemp(join(tmpdir(), "exevra-outside-"));
+  t.after(() =>
+    Promise.all([
+      rm(root, { recursive: true, force: true }),
+      rm(outside, { recursive: true, force: true }),
+    ]),
+  );
+  await mkdir(join(root, "artifacts", "shards", "unit-jdk17"), {
+    recursive: true,
+  });
+  await symlink(
+    outside,
+    join(root, "artifacts", "shards", "unit-jdk17", "target"),
+  );
+
+  await assert.rejects(
+    loadAggregatedReports(root, {
+      root: "artifacts/shards",
+      shards: ["unit-jdk17"],
+      reports: ["target/surefire-reports/TEST-*.xml"],
+    }),
+    RuntimeError,
+  );
+});
 
 test("initialize writes a validated JUnit config and records its first baseline", async (t) => {
   const root = await project();
