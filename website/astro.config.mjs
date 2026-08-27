@@ -18,10 +18,31 @@ export default defineConfig({
         {
           tag: "script",
           attrs: {
-            src: "https://context7.com/widget.js",
-            "data-library": "/exevra/exevra",
-            defer: true,
+            "data-astro-rerun": true,
           },
+          content: `
+            (() => {
+              const key = "__exevraContext7Load";
+              const load = () => {
+                if (!document.body || document.querySelector("#context7-widget")) return;
+                const script = document.createElement("script");
+                script.src = "https://context7.com/widget.js";
+                script.dataset.library = "/exevra/exevra";
+                document.body.appendChild(script);
+              };
+
+              if (!window[key]) {
+                window[key] = load;
+                document.addEventListener("astro:page-load", load);
+              }
+
+              if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", load, { once: true });
+              } else {
+                load();
+              }
+            })();
+          `,
         },
       ],
       components: {
