@@ -474,3 +474,34 @@ test("npm publish metadata step executes with a missing package version", async 
   assert.equal(code, 0, stderr);
   assert.equal(await readFile(output, "utf8"), "published=false\n");
 });
+
+test("npm publish verifies Node framework integrations first", async () => {
+  const workflow = parse(
+    await readFile(join(process.cwd(), ".github/workflows/publish.yml"), "utf8"),
+  ) as {
+    jobs: {
+      publish: {
+        steps: {
+          name?: string;
+          run?: string;
+          "working-directory"?: string;
+        }[];
+      };
+    };
+  };
+  const steps = workflow.jobs.publish.steps;
+  const publishIndex = steps.findIndex((step) => step.run?.trim() === "npm publish");
+  assert.notEqual(publishIndex, -1, "missing npm publish step");
+  for (const fixture of ["vitest", "jest", "playwright"]) {
+    const step = steps.find(
+      (candidate) =>
+        candidate["working-directory"] === `test/fixtures/node/${fixture}`,
+    );
+    assert.ok(step, `missing ${fixture} integration step`);
+    assert.match(step.run ?? "", /npm ci/);
+    assert.match(step.run ?? "", /npm test/);
+    assert.match(step.run ?? "", /init/);
+    assert.match(step.run ?? "", /check/);
+    assert.ok(steps.indexOf(step) < publishIndex, `${fixture} runs after publish`);
+  }
+});

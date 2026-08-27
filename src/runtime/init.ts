@@ -24,12 +24,12 @@ export interface InitializeResult {
 export interface NodeInitializationResult extends InitializeResult {
   command: string;
   framework: string;
-  packageManager: string;
   reportPath: string;
 }
 
 const generatedBaselinePath = ".exevra/baseline.json";
 const defaultNodeReportPath = "artifacts/junit.xml";
+const defaultVitestReportPath = ".vitest/junit/output.xml";
 const junitDetectionError =
   "unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report";
 
@@ -78,35 +78,67 @@ const frameworkFor = (
     ...Object.keys(manifest.dependencies ?? {}),
     ...Object.keys(manifest.devDependencies ?? {}),
   ]);
-  if (dependencies.has("vitest") || /\bvitest\b/i.test(script)) return "Vitest";
-  if (
-    dependencies.has("jest") ||
-    dependencies.has("@jest/globals") ||
-    /\bjest\b/i.test(script)
-  )
-    return "Jest";
-  if (
-    dependencies.has("@playwright/test") ||
-    /\bplaywright\b/i.test(script)
-  )
-    return "Playwright";
+  const scriptFrameworks = [
+    ["Vitest", /\bvitest\b/i],
+    ["Jest", /\bjest\b/i],
+    ["Playwright", /\bplaywright\b/i],
+  ] as const;
+  const fromScript = scriptFrameworks
+    .filter(([, pattern]) => pattern.test(script))
+    .map(([framework]) => framework);
+  if (fromScript.length === 1) return fromScript[0]!;
+  if (fromScript.length > 1) return "Node test runner";
+
+  const dependencyFrameworks = [
+    ["Vitest", dependencies.has("vitest")],
+    ["Jest", dependencies.has("jest") || dependencies.has("@jest/globals")],
+    ["Playwright", dependencies.has("@playwright/test")],
+  ] as const;
+  const fromDependencies = dependencyFrameworks
+    .filter(([, present]) => present)
+    .map(([framework]) => framework);
+  if (fromDependencies.length === 1) return fromDependencies[0]!;
   return "Node test runner";
 };
 
-const reportPathFor = (script: string): string | undefined => {
-  if (!/\bjunit\b/i.test(script)) return undefined;
+const outputPathFor = (script: string): string | undefined => {
   const match = /--(?:outputFile|output-file|junit-output|junitOutput)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/i.exec(
     script,
   );
-  const reportPath = match?.slice(1).find((value) => value !== undefined);
-  if (reportPath === undefined)
-    throw new RuntimeError(junitDetectionError);
-  return reportPath;
+  return match?.slice(1).find((value) => value !== undefined);
+};
+
+const reportPathFor = (
+  script: string,
+  framework: string,
+): string | undefined => {
+  const reportPath = outputPathFor(script);
+  const reporterArgument = /--reporters?(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi;
+  const hasJunitReporter = [...script.matchAll(reporterArgument)].some((match) =>
+    match
+      .slice(1)
+      .find((value) => value !== undefined)
+      ?.match(/\bjunit\b/i),
+  );
+  if (!hasJunitReporter) {
+    if (reportPath !== undefined) throw new RuntimeError(junitDetectionError);
+    return undefined;
+  }
+  if (reportPath !== undefined) return reportPath;
+  if (framework === "Vitest") return defaultVitestReportPath;
+  throw new RuntimeError(junitDetectionError);
+};
+
+type DetectedNodeProject = {
+  command: string;
+  framework: string;
+  packageManager: string;
+  reportPath: string;
 };
 
 const detectNodeProject = async (
   root: string,
-): Promise<Pick<NodeInitializationResult, "command" | "framework" | "packageManager" | "reportPath">> => {
+): Promise<DetectedNodeProject> => {
   let manifest: PackageManifest;
   try {
     manifest = JSON.parse(
@@ -124,7 +156,7 @@ const detectNodeProject = async (
     );
   const packageManager = await packageManagerFor(root, manifest);
   const framework = frameworkFor(manifest, script);
-  const configuredReportPath = reportPathFor(script);
+  const configuredReportPath = reportPathFor(script, framework);
   const reportPath = configuredReportPath ?? defaultNodeReportPath;
   const testCommand =
     packageManager === "bun" ? "bun run test" : `${packageManager} test`;
@@ -266,5 +298,10 @@ export const initializeNode = async (
     command: detected.command,
     reportPath: detected.reportPath,
   });
-  return { ...result, ...detected };
+  return {
+    ...result,
+    command: detected.command,
+    framework: detected.framework,
+    reportPath: detected.reportPath,
+  };
 };

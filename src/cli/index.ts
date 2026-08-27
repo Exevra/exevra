@@ -25,13 +25,21 @@ interface RecordInvocation {
   write: boolean;
 }
 
-interface InitInvocation {
+interface AutoInitInvocation {
   command: "init";
   configPath: string;
-  autoDetect: boolean;
-  testCommand?: string;
-  reportPaths?: string[];
+  mode: "auto";
 }
+
+interface ExplicitInitInvocation {
+  command: "init";
+  configPath: string;
+  mode: "explicit";
+  testCommand: string;
+  reportPaths: string[];
+}
+
+type InitInvocation = AutoInitInvocation | ExplicitInitInvocation;
 
 interface HelpInvocation {
   command: "help";
@@ -131,7 +139,7 @@ const parse = (arguments_: readonly string[]): Invocation => {
       return {
         command,
         configPath,
-        autoDetect: false,
+        mode: "explicit",
         testCommand: "mvn verify",
         reportPaths: [
           "target/surefire-reports/TEST-*.xml",
@@ -143,14 +151,14 @@ const parse = (arguments_: readonly string[]): Invocation => {
     if (testCommand === undefined && values.has("--report"))
       throw new InvocationError("--command is required for init");
     if (testCommand === undefined)
-      return { command, configPath, autoDetect: true };
+      return { command, configPath, mode: "auto" };
     const reportPath = values.get("--report");
     if (reportPath === undefined)
       throw new InvocationError("--report is required for init");
     return {
       command,
       configPath,
-      autoDetect: false,
+      mode: "explicit",
       testCommand,
       reportPaths: [reportPath],
     };
@@ -188,7 +196,7 @@ export const main = async (
       return 0;
     }
     if (invocation.command === "init") {
-      if (invocation.autoDetect) {
+      if (invocation.mode === "auto") {
         const result = await initializeNode(invocation.configPath);
         process.stdout.write(
           "Exevra\n\n" +
@@ -204,8 +212,8 @@ export const main = async (
       }
       const result = await initialize({
         configPath: invocation.configPath,
-        command: invocation.testCommand!,
-        reportPath: invocation.reportPaths!,
+        command: invocation.testCommand,
+        reportPath: invocation.reportPaths,
       });
       process.stdout.write(
         `Created config: ${invocation.configPath}\n` +

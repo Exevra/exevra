@@ -17,7 +17,7 @@ For a Node project with a `package.json` test script, let Exevra detect the pack
 npx exevra init
 ```
 
-Vitest projects without JUnit flags receive `--reporter=junit --outputFile=artifacts/junit.xml` in the generated Exevra command; Exevra does not edit `package.json`. Existing JUnit output flags are reused. Other frameworks need an explicit JUnit-producing command when Exevra cannot configure them safely.
+Vitest projects without JUnit flags receive `--reporter=junit --outputFile=artifacts/junit.xml` in the generated Exevra command; Exevra does not edit `package.json`. Existing JUnit output flags are reused, and an existing `--reporter=junit` uses Vitest's default `.vitest/junit/output.xml` path. Other frameworks need an explicit JUnit-producing command when Exevra cannot configure them safely.
 
 The command writes `.exevra.yml`, runs the test command, and creates the first baseline. It never overwrites an existing configuration.
 

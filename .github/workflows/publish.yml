@@ -32,6 +32,27 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run verify:bundle
+      - name: Verify Vitest integration
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          node "$GITHUB_WORKSPACE/build/src/cli/index.js" init
+          node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
+        working-directory: test/fixtures/node/vitest
+      - name: Verify Jest integration
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          node "$GITHUB_WORKSPACE/build/src/cli/index.js" init --command "npm test" --report artifacts/junit.xml
+          node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
+        working-directory: test/fixtures/node/jest
+      - name: Verify Playwright integration
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          node "$GITHUB_WORKSPACE/build/src/cli/index.js" init --command "npm test" --report artifacts/junit.xml
+          node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
+        working-directory: test/fixtures/node/playwright
       - id: package
         run: |
           package_name="$(node -p "require('./package.json').name")"

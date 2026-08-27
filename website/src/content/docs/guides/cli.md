@@ -40,7 +40,7 @@ In a Node project with `package.json` and a `test` script, the zero-argument for
 npx exevra init
 ```
 
-Vitest projects are configured by appending JUnit reporter flags to the generated Exevra command. Existing JUnit output flags are reused, and `package.json` is never edited. If Exevra cannot identify a safe JUnit output, it explains the missing setup; use the explicit form below.
+Vitest projects are configured by appending JUnit reporter flags to the generated Exevra command. Existing JUnit output flags are reused, and an existing `--reporter=junit` uses Vitest's default `.vitest/junit/output.xml` path. `package.json` is never edited. If Exevra cannot identify a safe JUnit output, it explains the missing setup; use the explicit form below.
 
 The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the test command, and creates the first baseline. It never overwrites an existing configuration.
 
