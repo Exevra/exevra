@@ -11,6 +11,7 @@ import {
   aggregate,
   check,
   initialize,
+  initializeNode,
   record,
   type CheckResult,
 } from "../runtime/index.js";
@@ -24,12 +25,21 @@ interface RecordInvocation {
   write: boolean;
 }
 
-interface InitInvocation {
+interface AutoInitInvocation {
   command: "init";
   configPath: string;
+  mode: "auto";
+}
+
+interface ExplicitInitInvocation {
+  command: "init";
+  configPath: string;
+  mode: "explicit";
   testCommand: string;
   reportPaths: string[];
 }
+
+type InitInvocation = AutoInitInvocation | ExplicitInitInvocation;
 
 interface HelpInvocation {
   command: "help";
@@ -62,7 +72,7 @@ class InvocationError extends Error {}
 const usage =
   "Usage: exevra <command> [options]\n\n" +
   "Commands:\n" +
-  "  init --command <command> --report <path>\n" +
+  "  init [--command <command> --report <path>]\n" +
   "  init --maven\n" +
   "  record [--config <path>] [--write]\n" +
   "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
@@ -129,6 +139,7 @@ const parse = (arguments_: readonly string[]): Invocation => {
       return {
         command,
         configPath,
+        mode: "explicit",
         testCommand: "mvn verify",
         reportPaths: [
           "target/surefire-reports/TEST-*.xml",
@@ -137,12 +148,20 @@ const parse = (arguments_: readonly string[]): Invocation => {
       };
     }
     const testCommand = values.get("--command");
-    if (testCommand === undefined)
+    if (testCommand === undefined && values.has("--report"))
       throw new InvocationError("--command is required for init");
+    if (testCommand === undefined)
+      return { command, configPath, mode: "auto" };
     const reportPath = values.get("--report");
     if (reportPath === undefined)
       throw new InvocationError("--report is required for init");
-    return { command, configPath, testCommand, reportPaths: [reportPath] };
+    return {
+      command,
+      configPath,
+      mode: "explicit",
+      testCommand,
+      reportPaths: [reportPath],
+    };
   }
   if (command === "record") return { command, configPath, write };
   const mode = values.get("--mode") ?? "enforce";
@@ -177,6 +196,20 @@ export const main = async (
       return 0;
     }
     if (invocation.command === "init") {
+      if (invocation.mode === "auto") {
+        const result = await initializeNode(invocation.configPath);
+        process.stdout.write(
+          "Exevra\n\n" +
+            `✓ Detected ${result.framework}\n` +
+            `✓ Test command: ${result.command}\n` +
+            `✓ JUnit report: ${result.reportPath}\n` +
+            `✓ Created config: ${invocation.configPath}\n` +
+            `✓ Created baseline: ${relative(process.cwd(), result.baselinePath)}\n\n` +
+            "Ready.\n\n" +
+            "Run:\n  npx exevra check\n",
+        );
+        return 0;
+      }
       const result = await initialize({
         configPath: invocation.configPath,
         command: invocation.testCommand,

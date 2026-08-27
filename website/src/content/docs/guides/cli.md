@@ -6,12 +6,41 @@ description: Install the CLI, then initialize, record, check, or aggregate a bas
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.2.0
+npm install --save-dev @exevra-dev/cli@0.3.0
 ```
 
 Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
 
+## Framework support
+
+Exevra does not call framework APIs. It runs your configured POSIX command and evaluates the fresh JUnit XML reports it produces. That makes the CLI compatible with any framework that has a JUnit reporter or converter.
+
+| Ecosystem | JUnit output | Exevra setup |
+| --- | --- | --- |
+| Maven Surefire/Failsafe | Standard `TEST-*.xml` directories | Built-in `init --maven` |
+| Vitest | `--reporter=junit --outputFile=...` | Zero-argument Node init in `0.3.0` |
+| Jest | `jest-junit` | Explicit command/config |
+| Playwright | JUnit reporter | Explicit command/config |
+| Mocha | `mocha-junit-reporter` | Explicit command/config |
+| Cypress | JUnit reporter/plugin | Explicit command/config |
+| pytest | `--junitxml=...` | Explicit command/config |
+| Gradle, Kotlin, and JUnit | Gradle test XML | Explicit report path |
+| Go test | `go-junit-report` or equivalent | Explicit converter |
+| .NET xUnit/NUnit/MSTest | JUnit-compatible logger | Explicit logger/config |
+| PHPUnit | `--log-junit` | Explicit command/config |
+| RSpec | JUnit formatter | Explicit formatter/config |
+
+This is a compatibility contract, not a framework whitelist. If a runner does not emit JUnit XML, add its reporter or a converter, then point `reports` at the generated file or pattern. Exevra currently requires a POSIX/Bash runtime.
+
 ## Initialize a JUnit project
+
+In a Node project with `package.json` and a `test` script, the zero-argument form detects the package manager, recognizes common Node test frameworks, and creates the first baseline:
+
+```sh
+npx exevra init
+```
+
+Vitest projects are configured by appending JUnit reporter flags to the generated Exevra command. Existing JUnit output flags are reused when an explicit output path is present. A JUnit reporter without an output path is rejected because Exevra needs a file to verify. `package.json` is never edited. If Exevra cannot identify a safe JUnit output, it explains the missing setup; use the explicit form below.
 
 The `npx exevra init --command` form supports JUnit XML only. It writes `.exevra.yml`, runs the test command, and creates the first baseline. It never overwrites an existing configuration.
 
@@ -43,9 +72,10 @@ npx exevra record --config .exevra.yml --write
 Use `--write` only after reviewing an intended execution-contract change. See [Baselines](../baselines/) for the review workflow.
 
 `check` runs the command again and compares fresh reports with the committed baseline.
+It uses `.exevra.yml` by default; `--config` is only needed for a nonstandard path.
 
 ```sh
-npx exevra check --config .exevra.yml
+npx exevra check
 npx exevra check --config .exevra.yml --mode advisory
 npx exevra check --config .exevra.yml --format json
 npx exevra check --config .exevra.yml --format github-actions
@@ -56,8 +86,6 @@ npx exevra check --config .exevra.yml --format github-actions
 `check --base-ref <ref>` compares watched paths against that Git ref. Without a base ref, the command reports that changed-file comparison is unavailable.
 
 ## Aggregate downloaded shard reports
-
-`aggregate` is included in `@exevra-dev/cli@0.2.0`.
 
 `aggregate` reads the explicit shard artifacts configured under `aggregation`, combines their JUnit suites, and evaluates the existing baseline. It never runs `command` or deletes report files.
 

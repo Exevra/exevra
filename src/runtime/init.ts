@@ -1,4 +1,4 @@
-import { open, lstat, realpath } from "node:fs/promises";
+import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { stringify } from "yaml";
 import { loadConfig } from "../core/index.js";
@@ -21,7 +21,153 @@ export interface InitializeResult {
   record: RecordResult;
 }
 
+export interface NodeInitializationResult extends InitializeResult {
+  command: string;
+  framework: string;
+  reportPath: string;
+}
+
 const generatedBaselinePath = ".exevra/baseline.json";
+const defaultNodeReportPath = "artifacts/junit.xml";
+const junitDetectionError =
+  "unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report";
+
+type PackageManifest = {
+  packageManager?: unknown;
+  scripts?: Record<string, unknown>;
+  dependencies?: Record<string, unknown>;
+  devDependencies?: Record<string, unknown>;
+};
+
+const fileExists = async (path: string): Promise<boolean> => {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+};
+
+const packageManagerFor = async (
+  root: string,
+  manifest: PackageManifest,
+): Promise<string> => {
+  if (typeof manifest.packageManager === "string") {
+    const declared = manifest.packageManager.split("@", 1)[0];
+    if (["npm", "pnpm", "yarn", "bun"].includes(declared)) return declared;
+  }
+  for (const [lockfile, packageManager] of [
+    ["pnpm-lock.yaml", "pnpm"],
+    ["yarn.lock", "yarn"],
+    ["bun.lockb", "bun"],
+    ["bun.lock", "bun"],
+    ["package-lock.json", "npm"],
+  ] as const) {
+    if (await fileExists(join(root, lockfile))) return packageManager;
+  }
+  return "npm";
+};
+
+const frameworkFor = (
+  manifest: PackageManifest,
+  script: string,
+): string => {
+  const dependencies = new Set([
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+  ]);
+  const scriptFrameworks = [
+    ["Vitest", /\bvitest\b/i],
+    ["Jest", /\bjest\b/i],
+    ["Playwright", /\bplaywright\b/i],
+  ] as const;
+  const fromScript = scriptFrameworks
+    .filter(([, pattern]) => pattern.test(script))
+    .map(([framework]) => framework);
+  if (fromScript.length === 1) return fromScript[0]!;
+  if (fromScript.length > 1) return "Node test runner";
+
+  const dependencyFrameworks = [
+    ["Vitest", dependencies.has("vitest")],
+    ["Jest", dependencies.has("jest") || dependencies.has("@jest/globals")],
+    ["Playwright", dependencies.has("@playwright/test")],
+  ] as const;
+  const fromDependencies = dependencyFrameworks
+    .filter(([, present]) => present)
+    .map(([framework]) => framework);
+  if (fromDependencies.length === 1) return fromDependencies[0]!;
+  return "Node test runner";
+};
+
+const outputPathFor = (script: string): string | undefined => {
+  const match = /--(?:outputFile|output-file|junit-output|junitOutput)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/i.exec(
+    script,
+  );
+  return match?.slice(1).find((value) => value !== undefined);
+};
+
+const reportPathFor = (script: string): string | undefined => {
+  const reportPath = outputPathFor(script);
+  const reporterArgument = /--reporters?(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi;
+  const hasJunitReporter = [...script.matchAll(reporterArgument)].some((match) =>
+    match
+      .slice(1)
+      .find((value) => value !== undefined)
+      ?.split(",")
+      .some((reporter) => reporter.trim().toLowerCase() === "junit") ?? false,
+  );
+  if (!hasJunitReporter) {
+    if (reportPath !== undefined) throw new RuntimeError(junitDetectionError);
+    return undefined;
+  }
+  if (reportPath !== undefined) return reportPath;
+  throw new RuntimeError(junitDetectionError);
+};
+
+type DetectedNodeProject = {
+  command: string;
+  framework: string;
+  packageManager: string;
+  reportPath: string;
+};
+
+const detectNodeProject = async (
+  root: string,
+): Promise<DetectedNodeProject> => {
+  let manifest: PackageManifest;
+  try {
+    manifest = JSON.parse(
+      await readFile(join(root, "package.json"), "utf8"),
+    ) as PackageManifest;
+  } catch {
+    throw new RuntimeError(
+      "unable to detect a Node project: package.json is missing or invalid",
+    );
+  }
+  const script = manifest.scripts?.test;
+  if (typeof script !== "string" || script.trim() === "")
+    throw new RuntimeError(
+      "unable to detect a Node test command: package.json scripts.test is missing",
+    );
+  const packageManager = await packageManagerFor(root, manifest);
+  const framework = frameworkFor(manifest, script);
+  const configuredReportPath = reportPathFor(script);
+  const reportPath = configuredReportPath ?? defaultNodeReportPath;
+  const testCommand =
+    packageManager === "bun" ? "bun run test" : `${packageManager} test`;
+  if (configuredReportPath === undefined && framework !== "Vitest")
+    throw new RuntimeError(junitDetectionError);
+  return {
+    command:
+      configuredReportPath === undefined
+        ? `${testCommand} -- --reporter=junit --outputFile=${defaultNodeReportPath}`
+        : testCommand,
+    framework,
+    packageManager,
+    reportPath,
+  };
+};
 
 const assertAsciiRolePath = (
   role: "configuration" | "report" | "baseline",
@@ -136,4 +282,22 @@ export const initialize = async ({
     throw new RuntimeError(`initial baseline recording failed: ${codes.join(", ")}`);
   }
   return { configPath: target, baselinePath, record: recordResult };
+};
+
+export const initializeNode = async (
+  configPath: string,
+): Promise<NodeInitializationResult> => {
+  const root = dirname(resolve(configPath));
+  const detected = await detectNodeProject(root);
+  const result = await initialize({
+    configPath,
+    command: detected.command,
+    reportPath: detected.reportPath,
+  });
+  return {
+    ...result,
+    command: detected.command,
+    framework: detected.framework,
+    reportPath: detected.reportPath,
+  };
 };

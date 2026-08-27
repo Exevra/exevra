@@ -1,0 +1,29 @@
+name: Verify Node integration
+description: Install and exercise an Exevra Node framework fixture
+inputs:
+  fixture:
+    description: Fixture directory relative to the repository root
+    required: true
+  init_mode:
+    description: Whether to use zero-argument or explicit initialization
+    required: true
+runs:
+  using: composite
+  steps:
+    - run: npm ci --ignore-scripts --no-audit --no-fund
+      working-directory: ${{ inputs.fixture }}
+      shell: bash
+    - run: npm test
+      working-directory: ${{ inputs.fixture }}
+      shell: bash
+    - if: ${{ inputs.init_mode == 'auto' }}
+      run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" init
+      working-directory: ${{ inputs.fixture }}
+      shell: bash
+    - if: ${{ inputs.init_mode == 'explicit' }}
+      run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" init --command "npm test" --report artifacts/junit.xml
+      working-directory: ${{ inputs.fixture }}
+      shell: bash
+    - run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
+      working-directory: ${{ inputs.fixture }}
+      shell: bash

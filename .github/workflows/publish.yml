@@ -32,6 +32,30 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run verify:bundle
+      - name: Verify Vitest integration
+        uses: ./.github/actions/node-integration
+        with:
+          fixture: test/fixtures/node/vitest
+          init_mode: auto
+      - name: Verify Jest integration
+        uses: ./.github/actions/node-integration
+        with:
+          fixture: test/fixtures/node/jest
+          init_mode: explicit
+      - name: Verify Playwright integration
+        uses: ./.github/actions/node-integration
+        with:
+          fixture: test/fixtures/node/playwright
+          init_mode: explicit
+      - name: Verify packed npm package
+        run: |
+          package_dir="$(mktemp -d)"
+          npm pack --ignore-scripts --pack-destination "$package_dir"
+          package_tarball="$(find "$package_dir" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$package_tarball"
+          consumer_dir="$(mktemp -d)"
+          npm install --prefix "$consumer_dir" --no-save --ignore-scripts --no-audit --no-fund "$package_tarball"
+          "$consumer_dir/node_modules/.bin/exevra" --help
       - id: package
         run: |
           package_name="$(node -p "require('./package.json').name")"

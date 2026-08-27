@@ -404,15 +404,15 @@ test("published action metadata and committed bundle exist", async () => {
   await readFile(join(process.cwd(), "dist", "index.js"), "utf8");
 });
 
-test("release package version is synchronized at 0.2.0", async () => {
+test("release package version is synchronized at 0.3.0", async () => {
   const manifest = JSON.parse(
     await readFile(join(process.cwd(), "package.json"), "utf8"),
   ) as { version: string };
   const lockfile = JSON.parse(
     await readFile(join(process.cwd(), "package-lock.json"), "utf8"),
   ) as { packages: Record<string, { version?: string }> };
-  assert.equal(manifest.version, "0.2.0");
-  assert.equal(lockfile.packages[""]?.version, "0.2.0");
+  assert.equal(manifest.version, "0.3.0");
+  assert.equal(lockfile.packages[""]?.version, "0.3.0");
 });
 
 test("release workflows and documentation pin current v7 GitHub Actions", async () => {
@@ -473,4 +473,74 @@ test("npm publish metadata step executes with a missing package version", async 
   });
   assert.equal(code, 0, stderr);
   assert.equal(await readFile(output, "utf8"), "published=false\n");
+});
+
+test("npm publish verifies Node framework integrations first", async () => {
+  const workflow = parse(
+    await readFile(join(process.cwd(), ".github/workflows/publish.yml"), "utf8"),
+  ) as {
+    jobs: {
+      publish: {
+        steps: {
+          name?: string;
+          run?: string;
+          uses?: string;
+          with?: Record<string, string>;
+          "working-directory"?: string;
+        }[];
+      };
+    };
+  };
+  const steps = workflow.jobs.publish.steps;
+  const publishIndex = steps.findIndex((step) => step.run?.trim() === "npm publish");
+  assert.notEqual(publishIndex, -1, "missing npm publish step");
+  for (const fixture of ["vitest", "jest", "playwright"]) {
+    const step = steps.find(
+      (candidate) =>
+        candidate.uses === "./.github/actions/node-integration" &&
+        candidate.with?.fixture === `test/fixtures/node/${fixture}`,
+    );
+    assert.ok(step, `missing ${fixture} integration step`);
+    assert.equal(
+      step.with?.init_mode,
+      fixture === "vitest" ? "auto" : "explicit",
+    );
+    assert.ok(steps.indexOf(step) < publishIndex, `${fixture} runs after publish`);
+  }
+});
+
+test("Node integration workflows share the composite fixture verification", async () => {
+  const action = await readFile(
+    join(process.cwd(), ".github/actions/node-integration/action.yml"),
+    "utf8",
+  );
+  assert.match(action, /npm ci --ignore-scripts --no-audit --no-fund/);
+  assert.match(action, /npm test/);
+  assert.match(action, /init/);
+  assert.match(action, /check/);
+});
+
+test("npm publish smoke-tests the packed CLI before publishing", async () => {
+  const workflow = parse(
+    await readFile(join(process.cwd(), ".github/workflows/publish.yml"), "utf8"),
+  ) as {
+    jobs: {
+      publish: {
+        steps: {
+          name?: string;
+          run?: string;
+        }[];
+      };
+    };
+  };
+  const steps = workflow.jobs.publish.steps;
+  const publishIndex = steps.findIndex((step) => step.run?.trim() === "npm publish");
+  assert.notEqual(publishIndex, -1, "missing npm publish step");
+  const packageStep = steps.find((step) => step.name === "Verify packed npm package");
+  assert.ok(packageStep, "missing packed npm package verification step");
+  assert.match(packageStep.run ?? "", /npm pack/);
+  assert.match(packageStep.run ?? "", /npm install/);
+  assert.match(packageStep.run ?? "", /node_modules\/\.bin\/exevra/);
+  assert.match(packageStep.run ?? "", /--help/);
+  assert.ok(steps.indexOf(packageStep) < publishIndex, "package verification runs after publish");
 });

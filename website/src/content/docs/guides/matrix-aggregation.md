@@ -3,8 +3,6 @@ title: Matrix and shard aggregation
 description: Check downloaded JUnit artifacts without running tests again.
 ---
 
-Matrix aggregation is included in `@exevra-dev/cli@0.2.0`.
-
 Use `aggregate` when test shards run in separate CI jobs. Your CI provider uploads each shard's JUnit reports; a collector job downloads them into the configured layout, then Exevra evaluates their combined suites against the existing baseline.
 
 Exevra does not call a provider API, download artifacts, infer matrix values, run `command`, or clean report files in this mode. The collector is CI-neutral: artifact transfer remains the workflow's responsibility.
