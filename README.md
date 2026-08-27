@@ -89,6 +89,8 @@ Other ecosystems work when their JUnit reporter or converter is configured expli
 
 This list is illustrative, not a whitelist. A framework that cannot produce JUnit XML needs a reporter or converter before Exevra can evaluate it. The CLI currently runs on POSIX/Bash environments.
 
+See the [supported frameworks reference](https://exevra.github.io/exevra/reference/supported-frameworks/) for the canonical compatibility contract and setup details.
+
 ## Matrix and shard aggregation
 
 For tests split across CI jobs, upload each shard's JUnit artifact and download it into an explicit `aggregation.root/<shard>` layout in one collector job. Then run:
