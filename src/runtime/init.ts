@@ -29,7 +29,6 @@ export interface NodeInitializationResult extends InitializeResult {
 
 const generatedBaselinePath = ".exevra/baseline.json";
 const defaultNodeReportPath = "artifacts/junit.xml";
-const defaultVitestReportPath = ".vitest/junit/output.xml";
 const junitDetectionError =
   "unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report";
 
@@ -108,24 +107,21 @@ const outputPathFor = (script: string): string | undefined => {
   return match?.slice(1).find((value) => value !== undefined);
 };
 
-const reportPathFor = (
-  script: string,
-  framework: string,
-): string | undefined => {
+const reportPathFor = (script: string): string | undefined => {
   const reportPath = outputPathFor(script);
   const reporterArgument = /--reporters?(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi;
   const hasJunitReporter = [...script.matchAll(reporterArgument)].some((match) =>
     match
       .slice(1)
       .find((value) => value !== undefined)
-      ?.match(/\bjunit\b/i),
+      ?.split(",")
+      .some((reporter) => reporter.trim().toLowerCase() === "junit") ?? false,
   );
   if (!hasJunitReporter) {
     if (reportPath !== undefined) throw new RuntimeError(junitDetectionError);
     return undefined;
   }
   if (reportPath !== undefined) return reportPath;
-  if (framework === "Vitest") return defaultVitestReportPath;
   throw new RuntimeError(junitDetectionError);
 };
 
@@ -156,7 +152,7 @@ const detectNodeProject = async (
     );
   const packageManager = await packageManagerFor(root, manifest);
   const framework = frameworkFor(manifest, script);
-  const configuredReportPath = reportPathFor(script, framework);
+  const configuredReportPath = reportPathFor(script);
   const reportPath = configuredReportPath ?? defaultNodeReportPath;
   const testCommand =
     packageManager === "bun" ? "bun run test" : `${packageManager} test`;

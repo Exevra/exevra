@@ -484,6 +484,8 @@ test("npm publish verifies Node framework integrations first", async () => {
         steps: {
           name?: string;
           run?: string;
+          uses?: string;
+          with?: Record<string, string>;
           "working-directory"?: string;
         }[];
       };
@@ -495,13 +497,50 @@ test("npm publish verifies Node framework integrations first", async () => {
   for (const fixture of ["vitest", "jest", "playwright"]) {
     const step = steps.find(
       (candidate) =>
-        candidate["working-directory"] === `test/fixtures/node/${fixture}`,
+        candidate.uses === "./.github/actions/node-integration" &&
+        candidate.with?.fixture === `test/fixtures/node/${fixture}`,
     );
     assert.ok(step, `missing ${fixture} integration step`);
-    assert.match(step.run ?? "", /npm ci/);
-    assert.match(step.run ?? "", /npm test/);
-    assert.match(step.run ?? "", /init/);
-    assert.match(step.run ?? "", /check/);
+    assert.equal(
+      step.with?.init_mode,
+      fixture === "vitest" ? "auto" : "explicit",
+    );
     assert.ok(steps.indexOf(step) < publishIndex, `${fixture} runs after publish`);
   }
+});
+
+test("Node integration workflows share the composite fixture verification", async () => {
+  const action = await readFile(
+    join(process.cwd(), ".github/actions/node-integration/action.yml"),
+    "utf8",
+  );
+  assert.match(action, /npm ci --ignore-scripts --no-audit --no-fund/);
+  assert.match(action, /npm test/);
+  assert.match(action, /init/);
+  assert.match(action, /check/);
+});
+
+test("npm publish smoke-tests the packed CLI before publishing", async () => {
+  const workflow = parse(
+    await readFile(join(process.cwd(), ".github/workflows/publish.yml"), "utf8"),
+  ) as {
+    jobs: {
+      publish: {
+        steps: {
+          name?: string;
+          run?: string;
+        }[];
+      };
+    };
+  };
+  const steps = workflow.jobs.publish.steps;
+  const publishIndex = steps.findIndex((step) => step.run?.trim() === "npm publish");
+  assert.notEqual(publishIndex, -1, "missing npm publish step");
+  const packageStep = steps.find((step) => step.name === "Verify packed npm package");
+  assert.ok(packageStep, "missing packed npm package verification step");
+  assert.match(packageStep.run ?? "", /npm pack/);
+  assert.match(packageStep.run ?? "", /npm install/);
+  assert.match(packageStep.run ?? "", /node_modules\/\.bin\/exevra/);
+  assert.match(packageStep.run ?? "", /--help/);
+  assert.ok(steps.indexOf(packageStep) < publishIndex, "package verification runs after publish");
 });

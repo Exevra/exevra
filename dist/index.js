@@ -43910,7 +43910,6 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
 
 const generatedBaselinePath = ".exevra/baseline.json";
 const defaultNodeReportPath = "artifacts/junit.xml";
-const defaultVitestReportPath = ".vitest/junit/output.xml";
 const junitDetectionError = "unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report";
 const fileExists = async (path) => {
     try {
@@ -43974,13 +43973,14 @@ const outputPathFor = (script) => {
     const match = /--(?:outputFile|output-file|junit-output|junitOutput)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/i.exec(script);
     return match?.slice(1).find((value) => value !== undefined);
 };
-const reportPathFor = (script, framework) => {
+const reportPathFor = (script) => {
     const reportPath = outputPathFor(script);
     const reporterArgument = /--reporters?(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi;
     const hasJunitReporter = [...script.matchAll(reporterArgument)].some((match) => match
         .slice(1)
         .find((value) => value !== undefined)
-        ?.match(/\bjunit\b/i));
+        ?.split(",")
+        .some((reporter) => reporter.trim().toLowerCase() === "junit") ?? false);
     if (!hasJunitReporter) {
         if (reportPath !== undefined)
             throw new RuntimeError(junitDetectionError);
@@ -43988,8 +43988,6 @@ const reportPathFor = (script, framework) => {
     }
     if (reportPath !== undefined)
         return reportPath;
-    if (framework === "Vitest")
-        return defaultVitestReportPath;
     throw new RuntimeError(junitDetectionError);
 };
 const detectNodeProject = async (root) => {
@@ -44005,7 +44003,7 @@ const detectNodeProject = async (root) => {
         throw new RuntimeError("unable to detect a Node test command: package.json scripts.test is missing");
     const packageManager = await packageManagerFor(root, manifest);
     const framework = frameworkFor(manifest, script);
-    const configuredReportPath = reportPathFor(script, framework);
+    const configuredReportPath = reportPathFor(script);
     const reportPath = configuredReportPath ?? defaultNodeReportPath;
     const testCommand = packageManager === "bun" ? "bun run test" : `${packageManager} test`;
     if (configuredReportPath === undefined && framework !== "Vitest")

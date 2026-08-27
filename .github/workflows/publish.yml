@@ -33,26 +33,29 @@ jobs:
       - run: npm run typecheck
       - run: npm run verify:bundle
       - name: Verify Vitest integration
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm test
-          node "$GITHUB_WORKSPACE/build/src/cli/index.js" init
-          node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
-        working-directory: test/fixtures/node/vitest
+        uses: ./.github/actions/node-integration
+        with:
+          fixture: test/fixtures/node/vitest
+          init_mode: auto
       - name: Verify Jest integration
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm test
-          node "$GITHUB_WORKSPACE/build/src/cli/index.js" init --command "npm test" --report artifacts/junit.xml
-          node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
-        working-directory: test/fixtures/node/jest
+        uses: ./.github/actions/node-integration
+        with:
+          fixture: test/fixtures/node/jest
+          init_mode: explicit
       - name: Verify Playwright integration
+        uses: ./.github/actions/node-integration
+        with:
+          fixture: test/fixtures/node/playwright
+          init_mode: explicit
+      - name: Verify packed npm package
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm test
-          node "$GITHUB_WORKSPACE/build/src/cli/index.js" init --command "npm test" --report artifacts/junit.xml
-          node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
-        working-directory: test/fixtures/node/playwright
+          package_dir="$(mktemp -d)"
+          npm pack --ignore-scripts --pack-destination "$package_dir"
+          package_tarball="$(find "$package_dir" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$package_tarball"
+          consumer_dir="$(mktemp -d)"
+          npm install --prefix "$consumer_dir" --no-save --ignore-scripts --no-audit --no-fund "$package_tarball"
+          "$consumer_dir/node_modules/.bin/exevra" --help
       - id: package
         run: |
           package_name="$(node -p "require('./package.json').name")"

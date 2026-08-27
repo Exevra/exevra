@@ -2,13 +2,11 @@
 
 ## Supported versions
 
-Security fixes are considered for the current development line only. No released versions are claimed yet.
+Security fixes are considered for the latest release and the current development line. Older releases are not supported.
 
 ## Reporting a vulnerability
 
-Do not report potential vulnerabilities in a public issue or discussion.
-
-This repository does not yet publish a private security contact or GitHub Security Advisories intake. A maintainer must publish a private reporting contact before confidential disclosure is possible. Until then, please do not include exploit details in public channels; wait for that contact to be published.
+Do not report potential vulnerabilities in a public issue or discussion. Use [GitHub's private vulnerability reporting form](https://github.com/Exevra/exevra/security/advisories/new) instead. If GitHub does not offer the form, contact a maintainer through GitHub without including exploit details and ask for a private reporting channel.
 
 When a private channel exists, include affected files or versions, reproduction steps, impact, and any proposed mitigation. Maintainers should acknowledge reports, assess impact, and coordinate disclosure before publishing details.
 

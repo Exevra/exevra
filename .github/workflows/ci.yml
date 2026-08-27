@@ -54,15 +54,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run build
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-        working-directory: ${{ matrix.path }}
-      - run: npm test
-        working-directory: ${{ matrix.path }}
-      - if: matrix.init_mode == 'auto'
-        run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" init
-        working-directory: ${{ matrix.path }}
-      - if: matrix.init_mode == 'explicit'
-        run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" init --command "npm test" --report artifacts/junit.xml
-        working-directory: ${{ matrix.path }}
-      - run: node "$GITHUB_WORKSPACE/build/src/cli/index.js" check
-        working-directory: ${{ matrix.path }}
+      - uses: ./.github/actions/node-integration
+        with:
+          fixture: ${{ matrix.path }}
+          init_mode: ${{ matrix.init_mode }}

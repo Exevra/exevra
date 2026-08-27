@@ -69,8 +69,8 @@ const autoVitestProject = async (): Promise<string> => {
     "#!/usr/bin/env node\n" +
       "import { mkdir, writeFile } from 'node:fs/promises';\n" +
       "import { dirname } from 'node:path';\n" +
-      "const output = process.argv.find((value) => value.startsWith('--outputFile='))?.slice('--outputFile='.length) ?? '.vitest/junit/output.xml';\n" +
-      "if (!process.argv.includes('--reporter=junit')) process.exit(1);\n" +
+      "const output = process.argv.find((value) => value.startsWith('--outputFile='))?.slice('--outputFile='.length);\n" +
+      "if (!process.argv.includes('--reporter=junit') || output === undefined) process.exit(1);\n" +
       "await mkdir(dirname(output), { recursive: true });\n" +
       "await writeFile(output, '<testsuite name=\"unit\"><testcase classname=\"unit\" name=\"test-1\"/></testsuite>\\n');\n",
   );
@@ -324,7 +324,7 @@ test("compiled CLI configures JUnit output for Vitest without flags", async (t) 
   await readFile(join(root, ".exevra", "baseline.json"), "utf8");
 });
 
-test("compiled CLI accepts Vitest's default JUnit output", async (t) => {
+test("compiled CLI requires an explicit Vitest JUnit output path", async (t) => {
   const root = await autoVitestProject();
   t.after(() => rm(root, { recursive: true, force: true }));
   const manifest = JSON.parse(
@@ -335,13 +335,32 @@ test("compiled CLI accepts Vitest's default JUnit output", async (t) => {
 
   const initialized = await run(root, "init");
 
-  assert.equal(initialized.code, 0, initialized.stderr);
-  assert.match(initialized.stdout, /JUnit report: \.vitest\/junit\/output\.xml/);
-  assert.match(
-    await readFile(join(root, ".exevra.yml"), "utf8"),
-    /reports:\n  - \.vitest\/junit\/output\.xml/,
+  assert.equal(initialized.code, 2);
+  assert.equal(
+    initialized.stderr,
+    "Operational error: unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report\n",
   );
-  await readFile(join(root, ".exevra", "baseline.json"), "utf8");
+  await assert.rejects(readFile(join(root, ".exevra.yml")), { code: "ENOENT" });
+});
+
+test("compiled CLI rejects a non-JUnit reporter with a JUnit-looking output path", async (t) => {
+  const root = await autoVitestProject();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const manifest = JSON.parse(
+    await readFile(join(root, "package.json"), "utf8"),
+  ) as { scripts: Record<string, string> };
+  manifest.scripts.test =
+    "vitest run --reporter=not-junit --outputFile=artifacts/junit.xml";
+  await writeFile(join(root, "package.json"), `${JSON.stringify(manifest)}\n`);
+
+  const initialized = await run(root, "init");
+
+  assert.equal(initialized.code, 2);
+  assert.equal(
+    initialized.stderr,
+    "Operational error: unable to detect a JUnit report from package.json scripts.test; add a JUnit reporter and rerun with --command/--report\n",
+  );
+  await assert.rejects(readFile(join(root, ".exevra.yml")), { code: "ENOENT" });
 });
 
 test("compiled CLI does not infer Vitest from an unrelated dependency", async (t) => {
