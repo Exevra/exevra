@@ -271,7 +271,7 @@ test("renders report-controlled finding content as an escaped literal summary co
     log.codeBlocks[0] ?? "",
     /# \*\*not markdown\*\* &lt;script&gt;not script&lt;\/script&gt;/,
   );
-  assert.doesNotMatch(log.codeBlocks[0] ?? "", /<script>|<h1>|<\/code>/);
+  assert.doesNotMatch(log.codeBlocks[0] ?? "", /<script>|<h1>|<\/code>/i);
 });
 
 test("does not expose test identifiers or raw reports in Action annotations or summaries", async () => {
