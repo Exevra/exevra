@@ -20,6 +20,7 @@ export default defineConfig({
           attrs: {
             src: "https://context7.com/widget.js",
             "data-library": "/exevra/exevra",
+            defer: true,
           },
         },
       ],
