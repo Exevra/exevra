@@ -14,6 +14,15 @@ export default defineConfig({
         alt: "",
       },
       customCss: ["./src/styles/exevra.css"],
+      head: [
+        {
+          tag: "script",
+          attrs: {
+            src: "https://context7.com/widget.js",
+            "data-library": "/exevra/exevra",
+          },
+        },
+      ],
       components: {
         Hero: "./src/components/ExevraHero.astro",
         SiteTitle: "./src/components/ExevraSiteTitle.astro",
