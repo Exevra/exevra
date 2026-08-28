@@ -6,7 +6,7 @@ description: Install the CLI, then initialize, record, check, or aggregate a bas
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.3.0
+npm install --save-dev @exevra-dev/cli@0.3.1
 ```
 
 Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
