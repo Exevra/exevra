@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.3.1
+
+Refreshes the bundled GitHub Action with `@vercel/ncc` 0.45.0. The release keeps the existing CLI and Action behavior while updating the generated Node 24 bundle and its build tooling.
+
 ## v0.3.0
 
 Adds zero-argument `exevra init` for Node projects. It detects the package manager, common test frameworks, and existing JUnit output from `package.json`; Vitest projects receive safe JUnit reporter flags in the generated Exevra command without changing `package.json`. Projects that need unsupported reporter configuration receive an explicit fallback error.
