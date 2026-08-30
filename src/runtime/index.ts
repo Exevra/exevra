@@ -1,4 +1,16 @@
-export { check, type CheckOptions, type CheckResult } from "./check.js";
+export {
+  check,
+  diff,
+  type CheckOptions,
+  type CheckResult,
+  type DiffResult,
+} from "./check.js";
+export { doctor } from "./doctor.js";
+export type {
+  DoctorCheck,
+  DoctorCheckStatus,
+  DoctorResult,
+} from "../core/index.js";
 export { aggregate, type AggregateOptions } from "./aggregate.js";
 export {
   initialize,

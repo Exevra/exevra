@@ -1,4 +1,9 @@
 build/
+coverage/
+artifacts/
 node_modules/
 website/dist/
 website/.astro/
+/.superpowers/
+/docs/
+/superpowers/

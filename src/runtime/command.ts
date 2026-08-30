@@ -35,12 +35,13 @@ export const cleanReports = async (
 export const runConfiguredCommand = async (
   root: string,
   command: string,
+  suppressOutput = false,
 ): Promise<{ finding?: Finding }> =>
   new Promise((resolveResult, reject) => {
     const child = spawn("bash", ["-e", "-o", "pipefail", "-c", command], {
       cwd: root,
       shell: false,
-      stdio: "inherit",
+      stdio: suppressOutput ? "ignore" : "inherit",
     });
     child.once("error", (error) =>
       reject(

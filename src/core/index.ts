@@ -1,6 +1,7 @@
 export * from "./model.js";
 export { CoreValidationError, loadConfig } from "./config.js";
 export { loadBaseline, serializeBaseline } from "./baseline.js";
+export { compareBaseline } from "./diff.js";
 export {
   aggregateSuites,
   JunitParseError,

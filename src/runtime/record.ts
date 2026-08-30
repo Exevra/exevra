@@ -11,18 +11,11 @@ import {
   type CanonicalSuite,
   type Finding,
 } from "../core/index.js";
-import {
-  cleanReports,
-  missingReports,
-  runConfiguredCommand,
-} from "./command.js";
+import { cleanReports, runConfiguredCommand } from "./command.js";
+import { buildReportFindings, mavenFilterFindings } from "./findings.js";
 import { loadRuntimeConfig } from "./load.js";
 import { assertSafeInRootPath, RuntimeError } from "./paths.js";
-import {
-  expandReportPaths,
-  loadReports,
-  missingReportPatterns,
-} from "./reports.js";
+import { expandConfiguredReportPaths, loadConfiguredReports } from "./reports.js";
 
 export interface RecordOptions {
   configPath: string;
@@ -59,10 +52,23 @@ export const record = async ({
   generatedAt = new Date().toISOString(),
 }: RecordOptions): Promise<RecordResult> => {
   const loaded = await loadRuntimeConfig(configPath);
+  const filterFindings = loaded.config.maven
+    ? mavenFilterFindings(
+        loaded.config.command,
+        loaded.config.maven.filterPolicy ?? "warn",
+      )
+    : [];
+  if (filterFindings.some(({ severity }) => severity === "error"))
+    return {
+      baseline: undefined as never,
+      suites: [],
+      findings: filterFindings,
+    };
+  const findings = filterFindings;
   await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
-  const existingReportPaths = await expandReportPaths(
+  const existingReportPaths = await expandConfiguredReportPaths(
     loaded.root,
-    loaded.config.reports,
+    loaded.config,
   );
   if (!write) {
     try {
@@ -83,29 +89,17 @@ export const record = async ({
     return {
       baseline: undefined as never,
       suites: [],
-      findings: [command.finding],
+      findings: [...findings, command.finding],
     };
-  const currentReportPaths = await expandReportPaths(
-    loaded.root,
-    loaded.config.reports,
-  );
-  const missing = [
-    ...(await missingReports(currentReportPaths)),
-    ...(await missingReportPatterns(loaded.root, loaded.config.reports)),
-  ];
-  if (missing.length > 0)
+  const reports = await loadConfiguredReports(loaded.root, loaded.config);
+  const reportFindings = buildReportFindings(reports);
+  if (reportFindings.length > 0)
     return {
       baseline: undefined as never,
       suites: [],
-      findings: missing.map((path) => ({
-        code: "REPORT_MISSING",
-        severity: "error",
-        message: `Required report was not produced: ${path}`,
-        remediation:
-          "Configure the test command to write every required JUnit report.",
-      })),
+      findings: [...findings, ...reportFindings],
     };
-  const suites = await loadReports(loaded.root, loaded.config.reports);
+  const suites = reports.suites;
   if (suites.reduce((total, suite) => total + suite.executed, 0) === 0)
     throw new RuntimeError("cannot record a baseline with zero executed tests");
   const baseline: Baseline = {
@@ -133,5 +127,5 @@ export const record = async ({
     serializeBaseline(baseline),
     write,
   );
-  return { baseline, suites, findings: [] };
+  return { baseline, suites, findings };
 };

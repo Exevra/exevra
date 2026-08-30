@@ -42645,16 +42645,77 @@ exports.visitAsync = visitAsync;
 
 /***/ }),
 
-/***/ 1560:
+/***/ 2751:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
-/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
-/* harmony export */   C: () => (/* binding */ runAction)
-/* harmony export */ });
-/* harmony import */ var _core_index_js__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(3290);
 
-const findingText = (finding) => (0,_core_index_js__WEBPACK_IMPORTED_MODULE_0__/* .renderText */ .S5)({ findings: [finding] }).trim();
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  C: () => (/* binding */ runAction)
+});
+
+// EXTERNAL MODULE: ./build/src/core/index.js + 7 modules
+var core = __nccwpck_require__(930);
+;// CONCATENATED MODULE: ./build/src/cli/summary.js
 const escapeHtml = (value) => value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+const outcome = (input) => input.findings.some(({ severity }) => severity === "error")
+    ? "EXEVRA BLOCKED"
+    : input.findings.length > 0
+        ? "EXEVRA PASSED WITH WARNINGS"
+        : "EXEVRA PASSED";
+const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+const identityList = (identifiers) => {
+    const displayed = [...identifiers]
+        .sort(compare)
+        .slice(0, 20)
+        .map((identifier) => JSON.stringify(identifier));
+    const more = identifiers.length - displayed.length;
+    return `${displayed.join(", ")}${more === 0 ? "" : ` and ${more} more`}`;
+};
+const renderGitHubSummaryBody = (input, options = {}) => {
+    const lines = [outcome(input)];
+    if (input.checks !== undefined) {
+        lines.push("DOCTOR");
+        lines.push(...input.checks.map(({ name, status }) => `${name}: ${status}`));
+        return lines;
+    }
+    const findings = new Map();
+    for (const finding of input.findings) {
+        const key = `${finding.code} (${finding.severity})`;
+        findings.set(key, (findings.get(key) ?? 0) + 1);
+    }
+    for (const [finding, count] of [...findings].sort(([left], [right]) => left.localeCompare(right)))
+        lines.push(`finding: ${finding} x${count}`);
+    if (input.suites !== undefined)
+        lines.push(`suites: ${input.suites.length}, executed: ${input.suites.reduce((total, suite) => total + suite.executed, 0)}, skipped: ${input.suites.reduce((total, suite) => total + suite.skipped, 0)}`);
+    if (input.changes !== undefined) {
+        const changes = new Map();
+        for (const change of input.changes.suites)
+            changes.set(change.kind, (changes.get(change.kind) ?? 0) + 1);
+        lines.push(`suite changes: ${[...changes]
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([kind, count]) => `${kind} ${count}`)
+            .join(", ") || "none"}`);
+    }
+    for (const diff of [...(options.identityDiffs ?? [])].sort((left, right) => compare(left.suite, right.suite)))
+        lines.push(`[TEST_IDENTITIES_CHANGED] ${diff.suite} missing: ${identityList(diff.missingTestIds)}; added: ${identityList(diff.addedTestIds)}`);
+    if ((input.notices ?? []).length > 0)
+        lines.push(`notices: ${input.notices.length}`);
+    return lines;
+};
+const renderGitHubSummaryText = (input, options = {}) => renderGitHubSummaryBody(input, options).join("\n");
+const renderGitHubSummary = (input, options = {}) => `## Exevra\n\n<pre><code>${escapeHtml(renderGitHubSummaryText(input, options))}</code></pre>\n`;
+
+;// CONCATENATED MODULE: ./build/src/action/index.js
+
+
+const findingText = (finding) => (0,core/* renderText */.S5)({ findings: [finding] }).trim();
+const action_escapeHtml = (value) => value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -42682,7 +42743,7 @@ const runAction = async ({ core, eventName, eventPayload, check, }) => {
             configPath: core.getInput("config"),
             ...(baseRef === undefined ? {} : { baseRef }),
         });
-        const summary = (0,_core_index_js__WEBPACK_IMPORTED_MODULE_0__/* .renderText */ .S5)(checked, {
+        const summary = renderGitHubSummaryText(checked, {
             identityDiffs: checked.identityDiffs,
         });
         for (const finding of checked.findings) {
@@ -42691,7 +42752,7 @@ const runAction = async ({ core, eventName, eventPayload, check, }) => {
             else
                 core.error(findingText(finding));
         }
-        await core.summary.addCodeBlock(escapeHtml(summary), "text").write();
+        await core.summary.addCodeBlock(action_escapeHtml(summary), "text").write();
         if (mode === "enforce" &&
             checked.findings.some((finding) => finding.severity === "error"))
             core.setFailed("EXEVRA BLOCKED");
@@ -42713,8 +42774,8 @@ var _actions_core__WEBPACK_IMPORTED_MODULE_0___namespace_cache;
 __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7484);
 /* harmony import */ var node_fs_promises__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(1455);
-/* harmony import */ var _index_js__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(1560);
-/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(3811);
+/* harmony import */ var _index_js__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(2751);
+/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7307);
 
 
 
@@ -42737,13 +42798,13 @@ __webpack_async_result__();
 
 /***/ }),
 
-/***/ 3290:
+/***/ 930:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 
 // EXPORTS
 __nccwpck_require__.d(__webpack_exports__, {
-  N: () => (/* reexport */ aggregateSuites),
+  N: () => (/* reexport */ junit_aggregateSuites),
   _3: () => (/* reexport */ evaluate),
   loadBaseline: () => (/* reexport */ loadBaseline),
   Z9: () => (/* reexport */ loadConfig),
@@ -42751,7 +42812,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   S5: () => (/* reexport */ renderText)
 });
 
-// UNUSED EXPORTS: CoreValidationError, JunitParseError, multisetDifference, renderGitHubActions, renderJson, resolveSuitePolicy, serializeBaseline, testIdHash, testIdHashes, testIdsHash
+// UNUSED EXPORTS: CoreValidationError, JunitParseError, compareBaseline, multisetDifference, renderGitHubActions, renderJson, resolveSuitePolicy, serializeBaseline, testIdHash, testIdHashes, testIdsHash
 
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
 var dist = __nccwpck_require__(8815);
@@ -42812,6 +42873,25 @@ const aggregation = (value) => {
         shards,
         reports,
     };
+};
+const mavenConfig = (value) => {
+    if (!isRecord(value))
+        throw new CoreValidationError("maven must be an object");
+    if (value.modules !== "auto")
+        throw new CoreValidationError("maven.modules must be auto");
+    const filterPolicy = value.filter_policy === undefined
+        ? "warn"
+        : value.filter_policy;
+    if (filterPolicy !== "off" && filterPolicy !== "warn" && filterPolicy !== "enforce")
+        throw new CoreValidationError("maven.filter_policy must be off, warn, or enforce");
+    return { modules: "auto", filterPolicy };
+};
+const gradleConfig = (value) => {
+    if (!isRecord(value))
+        throw new CoreValidationError("gradle must be an object");
+    if (value.modules !== "auto")
+        throw new CoreValidationError("gradle.modules must be auto");
+    return { modules: "auto" };
 };
 const policy = (value, field) => {
     if (!isRecord(value))
@@ -42893,6 +42973,8 @@ const loadConfig = (source) => {
             ...policy(item, `policy.protected_suites[${index}]`),
         };
     });
+    if (value.maven !== undefined && value.gradle !== undefined)
+        throw new CoreValidationError("maven and gradle cannot both be configured");
     return {
         version: 1,
         baseline: relativePath(value.baseline, "baseline"),
@@ -42900,6 +42982,8 @@ const loadConfig = (source) => {
         reports,
         watched,
         aggregation: value.aggregation === undefined ? undefined : aggregation(value.aggregation),
+        maven: value.maven === undefined ? undefined : mavenConfig(value.maven),
+        gradle: value.gradle === undefined ? undefined : gradleConfig(value.gradle),
         policy: {
             default: policy(value.policy.default, "policy.default"),
             protectedSuites,
@@ -42930,7 +43014,7 @@ const testIdsHash = (tests) => `sha256:${(0,external_node_crypto_.createHash)("s
     .sort()
     .join("\n"))
     .digest("hex")}`;
-const aggregateSuites = (observations) => {
+const junit_aggregateSuites = (observations) => {
     const suites = new Map();
     for (const suite of observations) {
         const previous = suites.get(suite.name);
@@ -43025,7 +43109,7 @@ const parseJunit = (xml, reportPath) => {
     }
     if (failure)
         throw failure;
-    return aggregateSuites([...suites.values()]
+    return junit_aggregateSuites([...suites.values()]
         .filter((suite) => suite.tests.length > 0 || !suite.hasNestedSuites)
         .map((suite) => ({
         name: suite.name,
@@ -43134,6 +43218,49 @@ const serializeBaseline = (source) => {
     return `${JSON.stringify({ ...baseline, reports: [...baseline.reports].sort(compareText), suites: [...baseline.suites].sort((left, right) => compareText(left.name, right.name)) }, null, 2)}\n`;
 };
 
+;// CONCATENATED MODULE: ./build/src/core/diff.js
+
+const diff_compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+const sameCounts = (left, right) => left.executed === right.executed && left.skipped === right.skipped;
+const suiteChange = (name, kind, baseline, current) => ({
+    name,
+    kind,
+    ...(baseline === undefined ? {} : { baseline }),
+    ...(current === undefined ? {} : { current }),
+});
+const compareBaseline = (baseline, currentSuites, config) => {
+    const current = aggregateSuites(currentSuites);
+    const currentByName = new Map(current.map((suite) => [suite.name, suite]));
+    const baselineByName = new Map(baseline.suites.map((suite) => [suite.name, suite]));
+    const names = [...new Set([...baselineByName.keys(), ...currentByName.keys()])].sort(diff_compareText);
+    const suites = [];
+    for (const name of names) {
+        const currentSuite = currentByName.get(name);
+        const baselineSuite = baselineByName.get(name);
+        if (baselineSuite === undefined && currentSuite !== undefined) {
+            suites.push(suiteChange(name, "added", undefined, { executed: currentSuite.executed, skipped: currentSuite.skipped }));
+            continue;
+        }
+        if (currentSuite === undefined && baselineSuite !== undefined) {
+            suites.push(suiteChange(name, "removed", { executed: baselineSuite.executed, skipped: baselineSuite.skipped }, undefined));
+            continue;
+        }
+        if (baselineSuite !== undefined &&
+            currentSuite !== undefined &&
+            !sameCounts(baselineSuite, currentSuite)) {
+            suites.push(suiteChange(name, "changed", { executed: baselineSuite.executed, skipped: baselineSuite.skipped }, { executed: currentSuite.executed, skipped: currentSuite.skipped }));
+        }
+    }
+    const sortedBaselineReports = [...baseline.reports].sort(diff_compareText);
+    const sortedConfigReports = [...config.reports].sort(diff_compareText);
+    return {
+        suites,
+        commandChanged: baseline.command !== config.command,
+        reportsChanged: sortedBaselineReports.length !== sortedConfigReports.length ||
+            sortedBaselineReports.some((report, index) => report !== sortedConfigReports[index]),
+    };
+};
+
 ;// CONCATENATED MODULE: ./build/src/core/identity.js
 const resolveSuitePolicy = (config, suiteName) => config.policy.protectedSuites.find((item) => new RegExp(item.match).test(suiteName)) ?? config.policy.default;
 const multisetDifference = (baseline, current) => {
@@ -43199,7 +43326,7 @@ const evaluate = ({ config, baseline, currentSuites, changedPaths = [], }) => {
         };
     const findings = [];
     const identityDiffs = [];
-    const normalizedSuites = aggregateSuites(currentSuites);
+    const normalizedSuites = junit_aggregateSuites(currentSuites);
     const current = new Map(normalizedSuites.map((suite) => [suite.name, suite]));
     const base = new Map(baseline.suites.map((suite) => [suite.name, suite]));
     const names = [...new Set([...current.keys(), ...base.keys()])].sort();
@@ -43273,6 +43400,7 @@ const orderedFindings = (findings) => [...findings].sort((left, right) => compar
 const orderedSuites = (suites) => suites
     .map(({ name, executed, skipped }) => ({ name, executed, skipped }))
     .sort((left, right) => compare(left.name, right.name));
+const orderedChanges = (changes) => [...changes].sort((left, right) => compare(left.name, right.name) || compare(left.kind, right.kind));
 const outcome = (input) => input.findings.some((finding) => finding.severity === "error")
     ? "blocked"
     : input.findings.length > 0
@@ -43304,30 +43432,88 @@ const identityList = (identifiers) => {
 const identityDetailLines = (identityDiffs) => [...identityDiffs]
     .sort((left, right) => compare(left.suite, right.suite))
     .map((diff) => `[TEST_IDENTITIES_CHANGED] ${diff.suite} missing: ${identityList(diff.missingTestIds)}; added: ${identityList(diff.addedTestIds)}`);
+const suiteChangeLine = (change) => {
+    if (change.kind === "added")
+        return `suite added: ${change.name} (${change.current.executed} executed, ${change.current.skipped} skipped)`;
+    if (change.kind === "removed")
+        return `suite removed: ${change.name} (${change.baseline.executed} executed, ${change.baseline.skipped} skipped)`;
+    return (`suite changed: ${change.name} (` +
+        `${change.baseline.executed} -> ${change.current.executed} executed, ` +
+        `${change.baseline.skipped} -> ${change.current.skipped} skipped)`);
+};
+const diffLines = (changes) => {
+    if (changes === undefined)
+        return [];
+    return [
+        "DIFF",
+        `command changed: ${changes.commandChanged ? "yes" : "no"}`,
+        `reports changed: ${changes.reportsChanged ? "yes" : "no"}`,
+        ...orderedChanges(changes.suites).map(suiteChangeLine),
+    ];
+};
+const doctorMessage = (check) => {
+    if (check.name === "baseline" && check.status === "passed")
+        return "A compatible baseline is available.";
+    if (check.name === "evaluation" && check.status === "passed")
+        return "Existing execution-integrity rules passed.";
+    if (check.name === "evaluation" && check.status === "failed")
+        return "Existing execution-integrity rules failed.";
+    return check.message;
+};
+const doctorLines = (checks) => {
+    if (checks === undefined)
+        return [];
+    return [
+        "DOCTOR",
+        ...checks.map((check) => `${check.name}: ${check.status} - ${doctorMessage(check)}`),
+    ];
+};
 const renderText = (input, options = {}) => {
     const lines = [outcomeText(input)];
+    if (input.checks !== undefined)
+        return `${[...lines, ...doctorLines(input.checks)].join("\n")}\n`;
     for (const finding of orderedFindings(input.findings))
         lines.push(findingLine(finding));
+    for (const line of diffLines(input.changes))
+        lines.push(line);
     for (const detail of identityDetailLines(options.identityDiffs ?? []))
         lines.push(detail);
     for (const notice of [...(input.notices ?? [])].sort(compare))
         lines.push(`NOTICE: ${notice}`);
     return `${lines.join("\n")}\n`;
 };
-const renderJson = (input) => JSON.stringify({
-    outcome: outcome(input),
-    findings: orderedFindings(input.findings),
-    notices: [...(input.notices ?? [])].sort(compare),
-    suites: orderedSuites(input.suites ?? []),
-}, null, 2) + "\n";
+const renderJson = (input) => JSON.stringify(input.checks === undefined
+    ? {
+        outcome: outcome(input),
+        findings: orderedFindings(input.findings),
+        notices: [...(input.notices ?? [])].sort(compare),
+        suites: orderedSuites(input.suites ?? []),
+        ...(input.changes === undefined
+            ? {}
+            : {
+                changes: {
+                    commandChanged: input.changes.commandChanged,
+                    reportsChanged: input.changes.reportsChanged,
+                    suites: orderedChanges(input.changes.suites),
+                },
+            }),
+    }
+    : { outcome: outcome(input), checks: input.checks }, null, 2) + "\n";
 const escapeWorkflowCommand = (value) => value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
 const renderGitHubActions = (input) => {
     const lines = [outcomeText(input)];
+    if (input.checks !== undefined) {
+        for (const line of doctorLines(input.checks))
+            lines.push(`::notice title=EXEVRA DOCTOR::${escapeWorkflowCommand(line)}`);
+        return `${lines.join("\n")}\n`;
+    }
     for (const finding of orderedFindings(input.findings)) {
         lines.push(`::${finding.severity} title=EXEVRA ${finding.code}::${escapeWorkflowCommand(findingLine(finding))}`);
     }
     for (const notice of [...(input.notices ?? [])].sort(compare))
         lines.push(`::warning title=EXEVRA NOTICE::${escapeWorkflowCommand(notice)}`);
+    for (const line of diffLines(input.changes))
+        lines.push(`::notice title=EXEVRA DIFF::${escapeWorkflowCommand(line)}`);
     return `${lines.join("\n")}\n`;
 };
 
@@ -43341,21 +43527,22 @@ const renderGitHubActions = (input) => {
 
 
 
+
 /***/ }),
 
-/***/ 3811:
+/***/ 7307:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 
 // EXPORTS
 __nccwpck_require__.d(__webpack_exports__, {
-  z6: () => (/* reexport */ check)
+  z6: () => (/* reexport */ check_check)
 });
 
-// UNUSED EXPORTS: RuntimeError, aggregate, assertSafeInRootPath, changedFiles, initialize, initializeNode, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
+// UNUSED EXPORTS: RuntimeError, aggregate, assertSafeInRootPath, changedFiles, diff, doctor, initialize, initializeNode, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
 
-// EXTERNAL MODULE: ./build/src/core/index.js + 6 modules
-var core = __nccwpck_require__(3290);
+// EXTERNAL MODULE: ./build/src/core/index.js + 7 modules
+var core = __nccwpck_require__(930);
 // EXTERNAL MODULE: external "node:fs/promises"
 var promises_ = __nccwpck_require__(1455);
 ;// CONCATENATED MODULE: external "node:child_process"
@@ -43464,16 +43651,16 @@ const command_cleanReports = async (reportPaths) => {
         }
     }
 };
-const command_runConfiguredCommand = async (root, command) => new Promise((resolveResult, reject) => {
+const command_runConfiguredCommand = async (root, command, suppressOutput = false) => new Promise((resolveResult, reject) => {
     const child = (0,external_node_child_process_namespaceObject.spawn)("bash", ["-e", "-o", "pipefail", "-c", command], {
         cwd: root,
         shell: false,
-        stdio: "inherit",
+        stdio: suppressOutput ? "ignore" : "inherit",
     });
     child.once("error", (error) => reject(new paths_RuntimeError(`unable to execute configured test command: ${error.message}`)));
     child.once("close", (code) => resolveResult(code === 0 ? {} : { finding: commandFinding(code) }));
 });
-const command_missingReports = async (reportPaths) => {
+const missingReports = async (reportPaths) => {
     const missing = [];
     for (const path of reportPaths) {
         try {
@@ -43489,6 +43676,175 @@ const command_missingReports = async (reportPaths) => {
     }
     return missing;
 };
+
+// EXTERNAL MODULE: ./node_modules/saxes/saxes.js
+var saxes = __nccwpck_require__(9800);
+;// CONCATENATED MODULE: ./build/src/runtime/maven.js
+
+
+
+
+const mavenFilterPattern = /(?:^|[\s"'`;|&()<>])(-Dtest|-Dit\.test|-Dgroups|-DexcludedGroups|-DskipTests|-Dmaven\.test\.skip|-DskipITs)(?=$|[\s="'`;|&()<>])/g;
+const detectMavenFilters = (command) => [
+    ...new Set(Array.from(command.matchAll(mavenFilterPattern), (match) => match[1])),
+].sort();
+const mavenFilterFinding = (command, policy) => {
+    const flags = detectMavenFilters(command);
+    if (policy === "off" || flags.length === 0)
+        return undefined;
+    return {
+        code: "TEST_FILTERED",
+        severity: policy === "enforce" ? "error" : "warning",
+        message: `Maven test-selection flags detected in the configured command: ${flags.join(", ")}.`,
+        remediation: "Remove the flags for a full test run, or explicitly set maven.filter_policy: off after reviewing the intended test scope.",
+    };
+};
+const relativeModulePath = (root, path) => {
+    const value = (0,external_node_path_namespaceObject.relative)(root, path).split(external_node_path_namespaceObject.sep).join("/");
+    return value === "" ? "." : value;
+};
+const parsePom = (source, pomPath) => {
+    const parser = new saxes/* SaxesParser */.wT({
+        fileName: pomPath,
+        position: true,
+        defaultXMLVersion: "1.0",
+        forceXMLVersion: true,
+    });
+    const stack = [];
+    const modules = [];
+    let packaging = "";
+    let packagingText;
+    let moduleText;
+    let failure;
+    parser.on("doctype", () => {
+        failure ??= new paths_RuntimeError(`unable to parse Maven POM ${pomPath}: DOCTYPE declarations are not allowed`);
+    });
+    parser.on("error", (error) => {
+        failure ??= new paths_RuntimeError(`unable to parse Maven POM ${pomPath}: ${error.message}`);
+    });
+    parser.on("opentag", (tag) => {
+        const parent = stack.at(-1);
+        if (tag.name === "packaging" && stack.length === 1 && parent === "project")
+            packagingText = "";
+        if (tag.name === "module" && stack.length === 2 && parent === "modules")
+            moduleText = "";
+        stack.push(tag.name);
+    });
+    parser.on("text", (text) => {
+        if (stack.at(-1) === "packaging" && packagingText !== undefined)
+            packagingText += text;
+        if (stack.at(-1) === "module" && moduleText !== undefined)
+            moduleText += text;
+    });
+    parser.on("closetag", (tag) => {
+        if (tag.name === "packaging" && packagingText !== undefined) {
+            packaging = packagingText.trim();
+            packagingText = undefined;
+        }
+        if (tag.name === "module" && moduleText !== undefined) {
+            const value = moduleText.trim();
+            if (value === "")
+                failure ??= new paths_RuntimeError(`unable to parse Maven POM ${pomPath}: module must not be empty`);
+            else
+                modules.push(value);
+            moduleText = undefined;
+        }
+        stack.pop();
+    });
+    try {
+        parser.write(source).close();
+    }
+    catch (error) {
+        failure ??= new paths_RuntimeError(`unable to parse Maven POM ${pomPath}: ${error instanceof Error ? error.message : "unknown parser error"}`);
+    }
+    if (failure)
+        throw failure;
+    return { modules, packaging: packaging || "jar" };
+};
+const readPom = async (path, required, displayPath = path) => {
+    try {
+        return await (0,promises_.readFile)(path, "utf8");
+    }
+    catch (error) {
+        const code = error.code;
+        if (code === "ENOENT" && !required)
+            return undefined;
+        if (code === "ENOENT")
+            throw new paths_RuntimeError(`Maven module POM is missing: ${displayPath}`);
+        throw new paths_RuntimeError(`unable to read Maven module POM: ${displayPath}`);
+    }
+};
+const maven_discoverMavenModules = async (root) => {
+    const rootPath = (0,external_node_path_namespaceObject.resolve)(root);
+    const rootPom = (0,external_node_path_namespaceObject.join)(rootPath, "pom.xml");
+    const rootSource = await readPom(rootPom, false, "pom.xml");
+    if (rootSource === undefined)
+        return [{ path: ".", pomPath: "pom.xml", aggregator: false }];
+    const modules = [];
+    const visited = new Set();
+    const visit = async (moduleRoot, modulePom, source, isRoot) => {
+        await paths_assertSafeInRootPath(rootPath, modulePom);
+        const canonicalRoot = await (0,promises_.realpath)(moduleRoot);
+        if (visited.has(canonicalRoot))
+            return;
+        visited.add(canonicalRoot);
+        const parsed = parsePom(source, relativeModulePath(rootPath, modulePom));
+        const aggregator = parsed.packaging === "pom";
+        if (!isRoot || !aggregator)
+            modules.push({
+                path: relativeModulePath(rootPath, moduleRoot),
+                pomPath: relativeModulePath(rootPath, modulePom),
+                aggregator,
+            });
+        for (const declaredModule of parsed.modules) {
+            const childRoot = (0,external_node_path_namespaceObject.resolve)(moduleRoot, declaredModule);
+            const childRelative = relativeModulePath(rootPath, childRoot);
+            const safeChildRoot = paths_resolveInRoot(rootPath, childRelative);
+            await paths_assertSafeInRootPath(rootPath, safeChildRoot);
+            let childEntry;
+            try {
+                childEntry = await (0,promises_.lstat)(safeChildRoot);
+            }
+            catch (error) {
+                if (error.code === "ENOENT")
+                    throw new paths_RuntimeError(`Maven module directory is missing: ${childRelative}`);
+                throw error;
+            }
+            if (childEntry.isSymbolicLink())
+                throw new paths_RuntimeError(`Maven module directory is a symlink: ${childRelative}`);
+            if (!childEntry.isDirectory())
+                throw new paths_RuntimeError(`Maven module path is not a directory: ${childRelative}`);
+            const childPom = (0,external_node_path_namespaceObject.join)(safeChildRoot, "pom.xml");
+            const childSource = await readPom(childPom, true, `${childRelative}/pom.xml`);
+            await visit(safeChildRoot, childPom, childSource, false);
+        }
+    };
+    await visit(rootPath, rootPom, rootSource, true);
+    return modules
+        .filter((module) => module.path !== "." || !module.aggregator)
+        .sort((left, right) => left.path.localeCompare(right.path));
+};
+
+;// CONCATENATED MODULE: ./build/src/runtime/findings.js
+
+const findings_mavenFilterFindings = (command, policy) => {
+    const finding = mavenFilterFinding(command, policy);
+    return finding === undefined ? [] : [finding];
+};
+const findings_buildReportFindings = (reports) => [
+    ...reports.missingReports.map((path) => ({
+        code: "REPORT_MISSING",
+        severity: "error",
+        message: `Required report was not produced: ${path}`,
+        remediation: "Configure the test command to write every required JUnit report.",
+    })),
+    ...reports.unreadableReports.map((path) => ({
+        code: "REPORT_UNREADABLE",
+        severity: "error",
+        message: `Required report could not be read: ${path}`,
+        remediation: "Ensure the generated JUnit report is readable before evaluating test execution.",
+    })),
+];
 
 ;// CONCATENATED MODULE: ./build/src/runtime/git.js
 
@@ -43574,11 +43930,121 @@ const load_readBaselineIfPresent = async (root, path) => {
             suites: [],
         };
     }
-    const { loadBaseline } = await Promise.resolve(/* import() */).then(__nccwpck_require__.bind(__nccwpck_require__, 3290));
+    const { loadBaseline } = await Promise.resolve(/* import() */).then(__nccwpck_require__.bind(__nccwpck_require__, 930));
     return loadBaseline(decoded);
 };
 
+;// CONCATENATED MODULE: ./build/src/runtime/gradle.js
+
+
+
+const gradle_relativeModulePath = (root, path) => {
+    const value = (0,external_node_path_namespaceObject.relative)(root, path).split(external_node_path_namespaceObject.sep).join("/");
+    return value === "" ? "." : value;
+};
+const withoutComments = (source) => source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+const projectPathFor = (value) => value.startsWith(":") ? value : `:${value}`;
+const modulePathFor = (projectPath) => projectPath
+    .slice(1)
+    .split(":")
+    .filter(Boolean)
+    .join("/");
+const stringValues = (source) => [...source.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1]);
+const includedProjects = (source) => {
+    const projects = [];
+    const includePattern = /\binclude\s*(?:\(([^)]*)\)|([^\n;]+))/g;
+    for (const match of source.matchAll(includePattern))
+        projects.push(...stringValues(match[1] ?? match[2] ?? ""));
+    return projects.map(projectPathFor);
+};
+const customProjectDirectories = (source) => {
+    const directories = new Map();
+    const pattern = /project\s*\(\s*['"]([^'"]+)['"]\s*\)\s*\.projectDir\s*=\s*file\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+    for (const match of source.matchAll(pattern))
+        directories.set(projectPathFor(match[1]), match[2]);
+    return directories;
+};
+const safeModuleRoot = (root, configuredPath) => {
+    const candidate = (0,external_node_path_namespaceObject.resolve)(root, configuredPath);
+    const relation = (0,external_node_path_namespaceObject.relative)(root, candidate);
+    if (relation === ".." ||
+        relation.startsWith(`..${external_node_path_namespaceObject.sep}`) ||
+        (0,external_node_path_namespaceObject.resolve)(root, relation) !== candidate)
+        throw new paths_RuntimeError(`Gradle module path escapes configuration root: ${configuredPath}`);
+    return candidate;
+};
+const assertModulePath = async (root, modulePath) => {
+    const candidate = safeModuleRoot(root, modulePath);
+    const parts = (0,external_node_path_namespaceObject.relative)(root, candidate).split(external_node_path_namespaceObject.sep).filter(Boolean);
+    let current = root;
+    for (const [index, part] of parts.entries()) {
+        current = (0,external_node_path_namespaceObject.join)(current, part);
+        let entry;
+        try {
+            entry = await (0,promises_.lstat)(current);
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                throw new paths_RuntimeError(`Gradle module directory is missing: ${modulePath}`);
+            throw new paths_RuntimeError(`unable to read Gradle module directory: ${modulePath}`);
+        }
+        if (entry.isSymbolicLink())
+            throw new paths_RuntimeError(`Gradle module directory is a symlink: ${modulePath}`);
+        if (index < parts.length - 1 && !entry.isDirectory())
+            throw new paths_RuntimeError(`Gradle module path is not a directory: ${modulePath}`);
+    }
+    if (parts.length === 0)
+        return candidate;
+    const entry = await (0,promises_.lstat)(candidate);
+    if (!entry.isDirectory())
+        throw new paths_RuntimeError(`Gradle module path is not a directory: ${modulePath}`);
+    return candidate;
+};
+const settingsSource = async (root) => {
+    for (const name of ["settings.gradle.kts", "settings.gradle"]) {
+        try {
+            return { source: await (0,promises_.readFile)((0,external_node_path_namespaceObject.join)(root, name), "utf8"), path: name };
+        }
+        catch (error) {
+            if (error.code !== "ENOENT")
+                throw new paths_RuntimeError(`unable to read Gradle settings: ${name}`);
+        }
+    }
+    return undefined;
+};
+const gradle_discoverGradleModules = async (root) => {
+    const rootPath = await (0,promises_.realpath)((0,external_node_path_namespaceObject.resolve)(root));
+    const settings = await settingsSource(rootPath);
+    if (settings === undefined)
+        return [{ path: ".", projectPath: ":", aggregator: false }];
+    const source = withoutComments(settings.source);
+    const directories = customProjectDirectories(source);
+    const visited = new Set();
+    const modules = [];
+    for (const projectPath of includedProjects(source)) {
+        const configuredPath = directories.get(projectPath) ?? modulePathFor(projectPath);
+        const moduleRoot = await assertModulePath(rootPath, configuredPath);
+        const canonicalRoot = await (0,promises_.realpath)(moduleRoot);
+        if (visited.has(canonicalRoot))
+            continue;
+        visited.add(canonicalRoot);
+        modules.push({
+            path: gradle_relativeModulePath(rootPath, moduleRoot),
+            projectPath,
+            aggregator: false,
+        });
+    }
+    if (modules.length === 0)
+        return [{ path: ".", projectPath: ":", aggregator: false }];
+    return modules.sort((left, right) => left.path.localeCompare(right.path));
+};
+
 ;// CONCATENATED MODULE: ./build/src/runtime/reports.js
+
+
+
 
 
 
@@ -43587,7 +44053,11 @@ const pattern = (value) => new RegExp(`^${value
     .split("*")
     .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join(".*")}$`);
-const reports_expandReportPaths = async (root, reports) => {
+const relativeRootPath = (root, path) => {
+    const value = (0,external_node_path_namespaceObject.relative)(root, path).split(external_node_path_namespaceObject.sep).join("/");
+    return value === "" ? "." : value;
+};
+const expandReportPaths = async (root, reports, rejectSymlinks = false, diagnosticRoot = root, onUnreadableDirectory) => {
     const paths = [];
     for (const report of reports) {
         if (!report.includes("*")) {
@@ -43603,33 +44073,122 @@ const reports_expandReportPaths = async (root, reports) => {
         await paths_assertSafeInRootPath(root, directoryPath);
         try {
             const entries = await (0,promises_.readdir)(directoryPath, { withFileTypes: true });
-            for (const entry of entries
-                .filter((item) => item.isFile() && pattern((0,external_node_path_namespaceObject.basename)(report)).test(item.name))
-                .sort((left, right) => left.name.localeCompare(right.name))) {
+            for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+                if (!pattern((0,external_node_path_namespaceObject.basename)(report)).test(entry.name))
+                    continue;
+                if (rejectSymlinks && entry.isSymbolicLink())
+                    throw new paths_RuntimeError(`configured report path is a symlink and will not be read: ${relativeRootPath(diagnosticRoot, paths_resolveInRoot(root, `${directory}/${entry.name}`))}`);
+                if (!entry.isFile())
+                    continue;
                 const path = paths_resolveInRoot(root, `${directory}/${entry.name}`);
                 await paths_assertSafeInRootPath(root, path);
                 paths.push(path);
             }
         }
         catch (error) {
-            if (error.code !== "ENOENT")
-                throw error;
+            const code = error.code;
+            if (code === "ENOENT")
+                continue;
+            if ((code === "EACCES" || code === "EPERM") && onUnreadableDirectory) {
+                onUnreadableDirectory(relativeRootPath(diagnosticRoot, directoryPath));
+                continue;
+            }
+            throw error;
         }
     }
     return paths;
 };
-const reports_missingReportPatterns = async (root, reports) => {
+const missingReportPatterns = async (root, reports) => {
     const patterns = reports.filter((report) => report.includes("*"));
     if (patterns.length === 0)
         return [];
-    return (await reports_expandReportPaths(root, patterns)).length === 0 ? patterns : [];
+    return (await expandReportPaths(root, patterns)).length === 0 ? patterns : [];
 };
-const reports_loadReports = async (root, reports) => {
+const loadReports = async (root, reports) => {
     const observations = [];
-    for (const path of await reports_expandReportPaths(root, reports)) {
+    for (const path of await expandReportPaths(root, reports)) {
         observations.push(...(0,core/* parseJunit */.kJ)(await (0,promises_.readFile)(path, "utf8"), (0,external_node_path_namespaceObject.relative)(root, path)));
     }
     return (0,core/* aggregateSuites */.N)(observations);
+};
+const moduleRootFor = (root, module) => module.path === "." ? root : paths_resolveInRoot(root, module.path);
+const moduleReportPaths = async (root, config, modules) => {
+    const paths = [];
+    for (const module of modules) {
+        if (module.aggregator)
+            continue;
+        const moduleRoot = moduleRootFor(root, module);
+        for (const report of config.reports)
+            paths.push(...(await expandReportPaths(moduleRoot, [report], true, root, () => undefined)));
+    }
+    return [...new Set(paths)].sort();
+};
+const loadBuildReports = async (root, config, modules) => {
+    const reportPaths = [];
+    const observations = [];
+    const missing = [];
+    const unreadable = [];
+    for (const module of modules) {
+        if (module.aggregator)
+            continue;
+        const moduleRoot = moduleRootFor(root, module);
+        let matched = false;
+        let unreadableDirectory = false;
+        const expected = [];
+        for (const report of config.reports) {
+            const expectedPath = relativeRootPath(root, paths_resolveInRoot(moduleRoot, report));
+            expected.push(expectedPath);
+            for (const path of await expandReportPaths(moduleRoot, [report], true, root, () => {
+                unreadableDirectory = true;
+                unreadable.push(expectedPath);
+            })) {
+                matched = true;
+                reportPaths.push(path);
+                try {
+                    observations.push(...(0,core/* parseJunit */.kJ)(await (0,promises_.readFile)(path, "utf8"), (0,external_node_path_namespaceObject.relative)(root, path)));
+                }
+                catch (error) {
+                    const code = error.code;
+                    if (code === "EACCES" || code === "EPERM")
+                        unreadable.push(relativeRootPath(root, path));
+                    else
+                        throw error;
+                }
+            }
+        }
+        if (!matched && !unreadableDirectory)
+            missing.push([...expected].sort().join(" or "));
+    }
+    return {
+        reportPaths: [...new Set(reportPaths)].sort(),
+        suites: (0,core/* aggregateSuites */.N)(observations),
+        missingReports: missing.sort(),
+        unreadableReports: [...new Set(unreadable)].sort(),
+    };
+};
+const reports_expandConfiguredReportPaths = async (root, config) => {
+    if (config.maven)
+        return moduleReportPaths(root, config, await maven_discoverMavenModules(root));
+    if (config.gradle)
+        return moduleReportPaths(root, config, await gradle_discoverGradleModules(root));
+    return expandReportPaths(root, config.reports);
+};
+const reports_loadConfiguredReports = async (root, config) => {
+    if (config.maven)
+        return loadBuildReports(root, config, await maven_discoverMavenModules(root));
+    if (config.gradle)
+        return loadBuildReports(root, config, await gradle_discoverGradleModules(root));
+    const reportPaths = await expandReportPaths(root, config.reports);
+    const missing = [
+        ...(await missingReports(reportPaths)),
+        ...(await missingReportPatterns(root, config.reports)),
+    ];
+    return {
+        reportPaths,
+        suites: missing.length === 0 ? await loadReports(root, config.reports) : [],
+        missingReports: missing,
+        unreadableReports: [],
+    };
 };
 const reports_loadAggregatedReports = async (root, aggregation) => {
     const aggregationRoot = resolveInRoot(root, aggregation.root);
@@ -43655,7 +44214,7 @@ const reports_loadAggregatedReports = async (root, aggregation) => {
         const observations = [];
         for (const report of [...aggregation.reports].sort()) {
             let matched = false;
-            for (const path of await reports_expandReportPaths(shardRoot, [report])) {
+            for (const path of await expandReportPaths(shardRoot, [report])) {
                 try {
                     observations.push(...parseJunit(await readFile(path, "utf8"), relative(shardRoot, path)));
                     reportPaths.push(path);
@@ -43688,33 +44247,52 @@ const reports_loadAggregatedReports = async (root, aggregation) => {
 
 
 
-const reportFinding = (path) => ({
-    code: "REPORT_MISSING",
-    severity: "error",
-    message: `Required report was not produced: ${path}`,
-    remediation: "Configure the test command to write every required JUnit report.",
-});
-const check = async ({ configPath, baseRef, changedPaths, }) => {
-    const loaded = await load_loadRuntimeConfig(configPath);
+
+const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutput, }, context = {}) => {
+    const loaded = context.loaded ?? (await load_loadRuntimeConfig(configPath));
     const notices = [];
-    await command_cleanReports(await reports_expandReportPaths(loaded.root, loaded.config.reports));
-    const command = await command_runConfiguredCommand(loaded.root, loaded.config.command);
-    if (command.finding)
-        return { findings: [command.finding], identityDiffs: [], suites: [], notices };
-    const currentReportPaths = await reports_expandReportPaths(loaded.root, loaded.config.reports);
-    const missing = [
-        ...(await command_missingReports(currentReportPaths)),
-        ...(await reports_missingReportPatterns(loaded.root, loaded.config.reports)),
-    ];
-    if (missing.length > 0)
+    const filterFindings = loaded.config.maven
+        ? findings_mavenFilterFindings(loaded.config.command, loaded.config.maven.filterPolicy ?? "warn")
+        : [];
+    if (filterFindings.some(({ severity }) => severity === "error"))
         return {
-            findings: missing.map(reportFinding),
+            findings: filterFindings,
             identityDiffs: [],
             suites: [],
             notices,
+            config: loaded.config,
+            baseline: undefined,
         };
-    const suites = await reports_loadReports(loaded.root, loaded.config.reports);
-    const baseline = await load_readBaselineIfPresent(loaded.root, loaded.baselinePath);
+    const findings = filterFindings;
+    const baselineBeforeCommand = context.baselineBeforeCommand
+        ? await load_readBaselineIfPresent(loaded.root, loaded.baselinePath)
+        : undefined;
+    await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config));
+    const command = await command_runConfiguredCommand(loaded.root, loaded.config.command, suppressCommandOutput);
+    if (command.finding)
+        return {
+            findings: [...findings, command.finding],
+            identityDiffs: [],
+            suites: [],
+            notices,
+            config: loaded.config,
+            baseline: undefined,
+        };
+    const reports = await reports_loadConfiguredReports(loaded.root, loaded.config);
+    const reportFindings = findings_buildReportFindings(reports);
+    if (reportFindings.length > 0)
+        return {
+            findings: [...findings, ...reportFindings],
+            identityDiffs: [],
+            suites: [],
+            notices,
+            config: loaded.config,
+            baseline: undefined,
+        };
+    const suites = reports.suites;
+    const baseline = context.baselineBeforeCommand
+        ? baselineBeforeCommand
+        : await load_readBaselineIfPresent(loaded.root, loaded.baselinePath);
     let paths = changedPaths;
     if (paths === undefined && baseRef !== undefined)
         paths = await changedFiles(loaded.root, baseRef);
@@ -43745,11 +44323,160 @@ const check = async ({ configPath, baseRef, changedPaths, }) => {
         });
     }
     return {
-        findings: result.findings,
+        findings: [...findings, ...result.findings],
         identityDiffs: result.identityDiffs,
         suites,
         notices,
+        config: loaded.config,
+        baseline,
     };
+};
+const check_check = async (options) => {
+    const { config: _config, baseline: _baseline, ...result } = await runCheck(options);
+    return result;
+};
+const diff = async (options) => {
+    const loaded = await loadRuntimeConfig(options.configPath);
+    const { config, ...result } = await runCheck(options, {
+        loaded,
+        baselineBeforeCommand: true,
+    });
+    if (result.suites.length === 0)
+        return result;
+    const baseline = result.baseline;
+    if (!baseline || baseline.schemaVersion !== 1)
+        return result;
+    return {
+        ...result,
+        changes: compareBaseline(baseline, result.suites, config),
+    };
+};
+
+;// CONCATENATED MODULE: ./build/src/runtime/doctor.js
+
+const hasCode = (findings, code) => findings.some((finding) => finding.code === code);
+const findByCode = (findings, code) => findings.find((finding) => finding.code === code);
+const blockedBeforeCommand = (findings) => findByCode(findings, "TEST_FILTERED")?.severity === "error";
+const blockedBeforeReports = (findings) => blockedBeforeCommand(findings) || hasCode(findings, "TEST_COMMAND_FAILED");
+const blockedBeforeBaseline = (findings) => blockedBeforeReports(findings) ||
+    hasCode(findings, "REPORT_MISSING") ||
+    hasCode(findings, "REPORT_UNREADABLE");
+const stageFindingCodes = (/* unused pure expression or super */ null && ([
+    "TEST_FILTERED",
+    "TEST_COMMAND_FAILED",
+    "REPORT_MISSING",
+    "REPORT_UNREADABLE",
+    "BASELINE_MISSING",
+    "BASELINE_SCHEMA_UNSUPPORTED",
+]));
+const checkFor = (result, name, checks) => {
+    const { findings } = result;
+    switch (name) {
+        case "configuration":
+            return {
+                name,
+                status: "passed",
+                message: "Configuration loaded and paths are valid.",
+            };
+        case "execution intent": {
+            const filter = findByCode(findings, "TEST_FILTERED");
+            return {
+                name,
+                status: filter?.severity === "error"
+                    ? "failed"
+                    : filter?.severity === "warning"
+                        ? "warning"
+                        : "passed",
+                message: filter === undefined
+                    ? "Execution intent is safe to evaluate."
+                    : "Execution intent uses test-selection filters.",
+            };
+        }
+        case "test command":
+            return {
+                name,
+                status: blockedBeforeCommand(findings)
+                    ? "skipped"
+                    : hasCode(findings, "TEST_COMMAND_FAILED")
+                        ? "failed"
+                        : "passed",
+                message: blockedBeforeCommand(findings)
+                    ? "The configured test command was not run."
+                    : hasCode(findings, "TEST_COMMAND_FAILED")
+                        ? "The configured test command did not complete successfully."
+                        : "The configured test command completed.",
+            };
+        case "reports":
+            return {
+                name,
+                status: blockedBeforeReports(findings)
+                    ? "skipped"
+                    : hasCode(findings, "REPORT_MISSING") ||
+                        hasCode(findings, "REPORT_UNREADABLE")
+                        ? "failed"
+                        : "passed",
+                message: blockedBeforeReports(findings)
+                    ? "Test report collection did not run."
+                    : hasCode(findings, "REPORT_MISSING") ||
+                        hasCode(findings, "REPORT_UNREADABLE")
+                        ? "Required test reports were not produced or could not be read."
+                        : "Required test reports were collected.",
+            };
+        case "baseline":
+            return {
+                name,
+                status: blockedBeforeBaseline(findings)
+                    ? "skipped"
+                    : hasCode(findings, "BASELINE_MISSING") ||
+                        hasCode(findings, "BASELINE_SCHEMA_UNSUPPORTED")
+                        ? "failed"
+                        : "passed",
+                message: blockedBeforeBaseline(findings)
+                    ? "Baseline evaluation did not run."
+                    : hasCode(findings, "BASELINE_MISSING")
+                        ? "No reviewed baseline is available."
+                        : hasCode(findings, "BASELINE_SCHEMA_UNSUPPORTED")
+                            ? "The reviewed baseline schema is unsupported."
+                            : "A reviewed baseline is available.",
+            };
+        case "evaluation": {
+            if (checks.some((item) => item.status === "failed" || item.status === "skipped"))
+                return {
+                    name,
+                    status: "skipped",
+                    message: "Execution evaluation did not run.",
+                };
+            const remaining = findings.filter((finding) => !stageFindingCodes.includes(finding.code));
+            return {
+                name,
+                status: remaining.some((finding) => finding.severity === "error")
+                    ? "failed"
+                    : remaining.some((finding) => finding.severity === "warning")
+                        ? "warning"
+                        : "passed",
+                message: remaining.some((finding) => finding.severity === "error")
+                    ? "Execution evaluation found blocking issues."
+                    : remaining.some((finding) => finding.severity === "warning")
+                        ? "Execution evaluation found advisory issues."
+                        : "Execution evaluation passed.",
+            };
+        }
+    }
+};
+const orderedNames = (/* unused pure expression or super */ null && ([
+    "configuration",
+    "execution intent",
+    "test command",
+    "reports",
+    "baseline",
+    "evaluation",
+]));
+const doctor = async (options) => {
+    const result = await check({ ...options, suppressCommandOutput: true });
+    const checks = [];
+    for (const name of orderedNames)
+        checks.push(checkFor(result, name, checks));
+    return { ...result, checks };
 };
 
 ;// CONCATENATED MODULE: ./build/src/runtime/aggregate.js
@@ -43763,7 +44490,7 @@ const shardFinding = (shard) => ({
     message: `Required shard artifact directory is missing: ${shard}`,
     remediation: "Download every configured shard artifact before aggregating reports.",
 });
-const aggregate_reportFinding = (path) => ({
+const reportFinding = (path) => ({
     code: "REPORT_MISSING",
     severity: "error",
     message: `Required shard report was not found: ${path}`,
@@ -43784,7 +44511,7 @@ const aggregate = async ({ configPath, }) => {
     const suites = aggregateSuites(reports.shards.flatMap((shard) => shard.suites));
     const findings = [
         ...reports.missingShards.map((shard) => shardFinding(`${aggregation.root}/${shard}`)),
-        ...reports.missingReports.map(aggregate_reportFinding),
+        ...reports.missingReports.map(reportFinding),
         ...reports.shards
             .filter((shard) => shard.reportPaths.length > 0 &&
             shard.suites.reduce((total, suite) => total + suite.executed, 0) === 0)
@@ -43820,6 +44547,7 @@ var external_node_crypto_ = __nccwpck_require__(7598);
 
 
 
+
 const atomicWriteBaseline = async (path, contents, overwrite) => {
     const temporary = `${path}.tmp-${randomUUID()}`;
     const file = await open(temporary, "wx", 0o600);
@@ -43838,8 +44566,18 @@ const atomicWriteBaseline = async (path, contents, overwrite) => {
 };
 const record_record = async ({ configPath, write = false, generatedAt = new Date().toISOString(), }) => {
     const loaded = await loadRuntimeConfig(configPath);
+    const filterFindings = loaded.config.maven
+        ? mavenFilterFindings(loaded.config.command, loaded.config.maven.filterPolicy ?? "warn")
+        : [];
+    if (filterFindings.some(({ severity }) => severity === "error"))
+        return {
+            baseline: undefined,
+            suites: [],
+            findings: filterFindings,
+        };
+    const findings = filterFindings;
     await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
-    const existingReportPaths = await expandReportPaths(loaded.root, loaded.config.reports);
+    const existingReportPaths = await expandConfiguredReportPaths(loaded.root, loaded.config);
     if (!write) {
         try {
             await access(loaded.baselinePath, constants.F_OK);
@@ -43856,25 +44594,17 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
         return {
             baseline: undefined,
             suites: [],
-            findings: [command.finding],
+            findings: [...findings, command.finding],
         };
-    const currentReportPaths = await expandReportPaths(loaded.root, loaded.config.reports);
-    const missing = [
-        ...(await missingReports(currentReportPaths)),
-        ...(await missingReportPatterns(loaded.root, loaded.config.reports)),
-    ];
-    if (missing.length > 0)
+    const reports = await loadConfiguredReports(loaded.root, loaded.config);
+    const reportFindings = buildReportFindings(reports);
+    if (reportFindings.length > 0)
         return {
             baseline: undefined,
             suites: [],
-            findings: missing.map((path) => ({
-                code: "REPORT_MISSING",
-                severity: "error",
-                message: `Required report was not produced: ${path}`,
-                remediation: "Configure the test command to write every required JUnit report.",
-            })),
+            findings: [...findings, ...reportFindings],
         };
-    const suites = await loadReports(loaded.root, loaded.config.reports);
+    const suites = reports.suites;
     if (suites.reduce((total, suite) => total + suite.executed, 0) === 0)
         throw new RuntimeError("cannot record a baseline with zero executed tests");
     const baseline = {
@@ -43898,10 +44628,12 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
     };
     await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
     await atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), write);
-    return { baseline, suites, findings: [] };
+    return { baseline, suites, findings };
 };
 
 ;// CONCATENATED MODULE: ./build/src/runtime/init.js
+
+
 
 
 
@@ -44021,11 +44753,20 @@ const assertAsciiRolePath = (role, path) => {
     if (/[^\x00-\x7f]/.test(path))
         throw new RuntimeError(`initialization ${role} path must use ASCII characters only`);
 };
-const sourceFor = (command, reportPaths) => stringify({
+const sourceFor = (command, reportPaths, maven, gradle) => stringify({
     version: 1,
     baseline: generatedBaselinePath,
     command,
     reports: reportPaths,
+    ...(maven === undefined
+        ? {}
+        : {
+            maven: {
+                modules: maven.modules,
+                filter_policy: maven.filterPolicy ?? "warn",
+            },
+        }),
+    ...(gradle === undefined ? {} : { gradle: { modules: gradle.modules } }),
     policy: {
         default: {
             min_executed: 1,
@@ -44035,6 +44776,9 @@ const sourceFor = (command, reportPaths) => stringify({
         },
     },
 }, { lineWidth: 0 });
+const gradleCommand = async (root, command) => command === "gradle test" && (await fileExists(join(root, "gradlew")))
+    ? "./gradlew test"
+    : command;
 const comparisonKey = (value) => value.normalize("NFC").toLowerCase();
 const foldedPath = (path) => comparisonKey(resolve(path));
 const pathsOverlap = (left, right) => {
@@ -44052,16 +44796,29 @@ const endsWithRolePath = (path, rolePath) => {
 const rejectPathOverlap = (leftRole, rightRole) => {
     throw new RuntimeError(`initialization paths overlap: ${leftRole} and ${rightRole}`);
 };
-const initialize = async ({ configPath, command, reportPath, }) => {
+const initialize = async ({ configPath, command, reportPath, maven, gradle, }) => {
     const reportPaths = Array.isArray(reportPath) ? reportPath : [reportPath];
+    const root = await realpath(dirname(resolve(configPath)));
+    if (maven && gradle)
+        throw new RuntimeError("maven and gradle cannot both be enabled");
+    if (maven)
+        await discoverMavenModules(root);
+    if (gradle)
+        await discoverGradleModules(root);
+    const mavenConfig = maven
+        ? { modules: "auto", filterPolicy: "warn" }
+        : undefined;
+    const gradleConfig = gradle ? { modules: "auto" } : undefined;
     const targetName = basename(resolve(configPath));
     assertAsciiRolePath("configuration", targetName);
     for (const path of reportPaths)
         assertAsciiRolePath("report", path);
     assertAsciiRolePath("baseline", generatedBaselinePath);
-    const source = sourceFor(command, reportPaths);
+    const configuredCommand = gradle
+        ? await gradleCommand(root, command)
+        : command;
+    const source = sourceFor(configuredCommand, reportPaths, mavenConfig, gradleConfig);
     const config = loadConfig(source);
-    const root = await realpath(dirname(resolve(configPath)));
     const target = join(root, targetName);
     const baselinePath = resolveInRoot(root, config.baseline);
     const configuredReportPaths = config.reports.map((report) => resolveInRoot(root, report));
@@ -44124,6 +44881,7 @@ const initializeNode = async (configPath) => {
 };
 
 ;// CONCATENATED MODULE: ./build/src/runtime/index.js
+
 
 
 

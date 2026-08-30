@@ -1,0 +1,9 @@
+version: 1
+baseline: .exevra/baseline.json
+command: npm run test:junit
+reports:
+  - artifacts/junit.xml
+policy:
+  default:
+    min_executed: 1
+    max_drop_percent: 0

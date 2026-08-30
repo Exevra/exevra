@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   cp,
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -12,9 +13,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import test from "node:test";
-import { loadConfig } from "../../src/core/index.js";
+import { JunitParseError, loadConfig } from "../../src/core/index.js";
 import {
   check,
+  doctor,
+  diff,
   aggregate,
   changedFiles,
   initialize,
@@ -27,7 +30,11 @@ import {
   cleanReports,
   runConfiguredCommand,
 } from "../../src/runtime/command.js";
-import { loadAggregatedReports } from "../../src/runtime/reports.js";
+import {
+  expandConfiguredReportPaths,
+  loadAggregatedReports,
+  loadConfiguredReports,
+} from "../../src/runtime/reports.js";
 
 const fixture = join(process.cwd(), "test", "fixtures", "project");
 
@@ -82,6 +89,53 @@ const writeShardReport = async (
       .join("")}</testsuite>`,
   );
 };
+
+const writeMavenPom = async (
+  root: string,
+  path: string,
+  body: string,
+): Promise<void> => {
+  const pomPath = join(root, path, "pom.xml");
+  await mkdir(dirname(pomPath), { recursive: true });
+  await writeFile(
+    pomPath,
+    `<project xmlns="http://maven.apache.org/POM/4.0.0">${body}</project>`,
+  );
+};
+
+const mavenConfig = () =>
+  loadConfig({
+    version: 1,
+    baseline: ".exevra/baseline.json",
+    command: "mvn verify",
+    reports: [
+      "target/surefire-reports/TEST-*.xml",
+      "target/failsafe-reports/TEST-*.xml",
+    ],
+    maven: { modules: "auto" },
+    policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+  });
+
+const writeMavenFilterConfig = async (
+  root: string,
+  filterPolicy: "off" | "warn" | "enforce",
+  command: string,
+  reports = ["target/surefire-reports/TEST-*.xml"],
+) =>
+  writeFile(
+    join(root, ".exevra.yml"),
+    JSON.stringify({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command,
+      reports,
+      maven: { modules: "auto", filter_policy: filterPolicy },
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    }),
+  );
+
+const mavenFilterCommand = (sentinel: string): string =>
+  `node -e "require('node:fs').writeFileSync('${sentinel}', 'ran')" && node tools/fake-junit-command.mjs target/surefire-reports/TEST-unit.xml -Dtest=SecretTest`;
 
 test("aggregate combines shards without running or cleaning configured command reports", async (t) => {
   const root = await project();
@@ -268,6 +322,177 @@ test("loadAggregatedReports rejects a symlinked shard report parent", async (t) 
   );
 });
 
+test("loadConfiguredReports collects either standard report family per Maven module", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>service</module><module>integration</module></modules>",
+  );
+  await writeMavenPom(root, "service", "<packaging>jar</packaging>");
+  await writeMavenPom(root, "integration", "<packaging>jar</packaging>");
+  const surefire = join(
+    root,
+    "service",
+    "target",
+    "surefire-reports",
+    "TEST-service.xml",
+  );
+  const failsafe = join(
+    root,
+    "integration",
+    "target",
+    "failsafe-reports",
+    "TEST-integration.xml",
+  );
+  await mkdir(dirname(surefire), { recursive: true });
+  await mkdir(dirname(failsafe), { recursive: true });
+  await writeFile(surefire, '<testsuite name="service"><testcase name="unit"/></testsuite>');
+  await writeFile(failsafe, '<testsuite name="integration"><testcase name="smoke"/></testsuite>');
+
+  const result = await loadConfiguredReports(root, mavenConfig());
+
+  assert.deepEqual(result.missingReports, []);
+  assert.deepEqual(result.unreadableReports, []);
+  assert.deepEqual(result.suites.map((suite) => suite.name), ["integration", "service"]);
+  assert.deepEqual(
+    result.reportPaths.map((path) => relative(root, path)),
+    [
+      "integration/target/failsafe-reports/TEST-integration.xml",
+      "service/target/surefire-reports/TEST-service.xml",
+    ],
+  );
+});
+
+test("loadConfiguredReports reports a Maven module with neither report family", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>service</module></modules>",
+  );
+  await writeMavenPom(root, "service", "<packaging>jar</packaging>");
+
+  const result = await loadConfiguredReports(root, mavenConfig());
+
+  assert.deepEqual(result.suites, []);
+  assert.deepEqual(result.unreadableReports, []);
+  assert.deepEqual(result.missingReports, [
+    "service/target/failsafe-reports/TEST-*.xml or service/target/surefire-reports/TEST-*.xml",
+  ]);
+});
+
+test("loadConfiguredReports reports unreadable Maven report files", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>service</module></modules>",
+  );
+  await writeMavenPom(root, "service", "<packaging>jar</packaging>");
+  const report = join(
+    root,
+    "service",
+    "target",
+    "surefire-reports",
+    "TEST-service.xml",
+  );
+  await mkdir(dirname(report), { recursive: true });
+  await writeFile(report, '<testsuite name="service"><testcase name="unit"/></testsuite>');
+  await chmod(report, 0o000);
+  try {
+    const result = await loadConfiguredReports(root, mavenConfig());
+    assert.deepEqual(result.missingReports, []);
+    assert.deepEqual(result.unreadableReports, [
+      "service/target/surefire-reports/TEST-service.xml",
+    ]);
+  } finally {
+    await chmod(report, 0o600);
+  }
+});
+
+test("loadConfiguredReports rejects symlinked Maven report files", async (t) => {
+  const root = await project();
+  const outside = await mkdtemp(join(tmpdir(), "exevra-runtime-outside-"));
+  t.after(async () => {
+    await Promise.all([
+      rm(root, { recursive: true, force: true }),
+      rm(outside, { recursive: true, force: true }),
+    ]);
+  });
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>service</module></modules>",
+  );
+  await writeMavenPom(root, "service", "<packaging>jar</packaging>");
+  const target = join(outside, "TEST-service.xml");
+  await writeFile(target, '<testsuite name="service"><testcase name="unit"/></testsuite>');
+  const report = join(
+    root,
+    "service",
+    "target",
+    "surefire-reports",
+    "TEST-service.xml",
+  );
+  await mkdir(dirname(report), { recursive: true });
+  await symlink(target, report);
+
+  await assert.rejects(
+    loadConfiguredReports(root, mavenConfig()),
+    (error: unknown) =>
+      error instanceof RuntimeError &&
+      error.message ===
+        "configured report path is a symlink and will not be read: service/target/surefire-reports/TEST-service.xml",
+  );
+});
+
+test("loadConfiguredReports preserves malformed Maven JUnit errors", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>service</module></modules>",
+  );
+  await writeMavenPom(root, "service", "<packaging>jar</packaging>");
+  const report = join(
+    root,
+    "service",
+    "target",
+    "failsafe-reports",
+    "TEST-service.xml",
+  );
+  await mkdir(dirname(report), { recursive: true });
+  await writeFile(report, "<testsuite>");
+
+  await assert.rejects(
+    loadConfiguredReports(root, mavenConfig()),
+    (error: unknown) => error instanceof JunitParseError,
+  );
+});
+
+test("expandConfiguredReportPaths preserves generic report expansion", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const paths = await expandConfiguredReportPaths(
+    root,
+    loadConfig({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command: "npm test",
+      reports: ["artifacts/junit.xml"],
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    }),
+  );
+
+  assert.deepEqual(paths.map((path) => relative(root, path)), ["artifacts/junit.xml"]);
+});
+
 test("initialize writes a validated JUnit config and records its first baseline", async (t) => {
   const root = await project();
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -285,6 +510,139 @@ test("initialize writes a validated JUnit config and records its first baseline"
   assert.deepEqual(config.reports, ["artifacts/junit.xml"]);
   assert.equal(config.policy.default.identity, "warn");
   assert.equal(config.policy.default.identityDetails, "counts");
+  assert.equal(result.record.suites[0]?.executed, 10);
+});
+
+test("check warns and continues for Maven filters, while off and non-Maven stay silent", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  await writeMavenFilterConfig(root, "warn", mavenFilterCommand("warn-sentinel"));
+
+  const warning = await check({ configPath: join(root, ".exevra.yml") });
+
+  assert.ok(
+    warning.findings.some(
+      ({ code, severity }) => code === "TEST_FILTERED" && severity === "warning",
+    ),
+  );
+  assert.equal(warning.suites[0]?.executed, 10);
+  assert.equal(await readFile(join(root, "warn-sentinel"), "utf8"), "ran");
+  assert.doesNotMatch(warning.findings[0]!.message, /SecretTest/);
+
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  await writeMavenFilterConfig(root, "off", mavenFilterCommand("off-sentinel"));
+  const off = await check({ configPath: join(root, ".exevra.yml") });
+  assert.equal(off.findings.some(({ code }) => code === "TEST_FILTERED"), false);
+  assert.equal(await readFile(join(root, "off-sentinel"), "utf8"), "ran");
+
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  await writeFile(
+    join(root, ".exevra.yml"),
+    JSON.stringify({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command: mavenFilterCommand("generic-sentinel").replace(
+        "target/surefire-reports/TEST-unit.xml",
+        "artifacts/junit.xml",
+      ),
+      reports: ["artifacts/junit.xml"],
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    }),
+  );
+  const generic = await check({ configPath: join(root, ".exevra.yml") });
+  assert.equal(
+    generic.findings.some(({ code }) => code === "TEST_FILTERED"),
+    false,
+  );
+  assert.equal(await readFile(join(root, "generic-sentinel"), "utf8"), "ran");
+  assert.equal(generic.suites[0]?.executed, 10);
+});
+
+test("check enforce returns before cleanup and command execution", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const report = join(root, "target", "surefire-reports", "TEST-stale.xml");
+  await mkdir(dirname(report), { recursive: true });
+  await writeFile(report, "stale");
+  await writeMavenFilterConfig(root, "enforce", mavenFilterCommand("enforce-sentinel"));
+
+  const result = await check({ configPath: join(root, ".exevra.yml") });
+
+  assert.deepEqual(
+    result.findings.map(({ code, severity }) => ({ code, severity })),
+    [{ code: "TEST_FILTERED", severity: "error" }],
+  );
+  assert.equal(await readFile(report, "utf8"), "stale");
+  await assert.rejects(readFile(join(root, "enforce-sentinel"), "utf8"), {
+    code: "ENOENT",
+  });
+});
+
+test("record returns Maven filter warnings with a schema-v1 baseline and enforces before execution", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  await writeMavenFilterConfig(root, "warn", mavenFilterCommand("record-warn-sentinel"));
+
+  const warning = await record({
+    configPath: join(root, ".exevra.yml"),
+    write: true,
+  });
+
+  assert.deepEqual(
+    warning.findings.map(({ code, severity }) => ({ code, severity })),
+    [{ code: "TEST_FILTERED", severity: "warning" }],
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(join(root, ".exevra", "baseline.json"), "utf8"),
+    ).schemaVersion,
+    1,
+  );
+
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  const report = join(root, "target", "surefire-reports", "TEST-stale.xml");
+  await mkdir(dirname(report), { recursive: true });
+  await writeFile(report, "stale");
+  await writeMavenFilterConfig(root, "enforce", mavenFilterCommand("record-enforce-sentinel"));
+  const enforced = await record({
+    configPath: join(root, ".exevra.yml"),
+    write: true,
+  });
+
+  assert.deepEqual(
+    enforced.findings.map(({ code, severity }) => ({ code, severity })),
+    [{ code: "TEST_FILTERED", severity: "error" }],
+  );
+  assert.equal(await readFile(report, "utf8"), "stale");
+  await assert.rejects(readFile(join(root, "record-enforce-sentinel"), "utf8"), {
+    code: "ENOENT",
+  });
+});
+
+test("initialize emits a root-only Maven marker with the default filter policy", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra.yml"), { force: true });
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+
+  const result = await initialize({
+    configPath: join(root, ".exevra.yml"),
+    command: "node tools/fake-junit-command.mjs target/surefire-reports/TEST-unit.xml",
+    reportPath: [
+      "target/surefire-reports/TEST-*.xml",
+      "target/failsafe-reports/TEST-*.xml",
+    ],
+    maven: true,
+  });
+
+  const source = await readFile(join(root, ".exevra.yml"), "utf8");
+  assert.match(source, /maven:\n  modules: auto\n  filter_policy: warn/);
+  assert.deepEqual(loadConfig(source).maven, {
+    modules: "auto",
+    filterPolicy: "warn",
+  });
   assert.equal(result.record.suites[0]?.executed, 10);
 });
 
@@ -778,6 +1136,108 @@ test("check reports a nonzero test command without parsing reports", async (t) =
   assert.match(result.findings[0]?.message ?? "", /23/);
 });
 
+test("doctor reports all successful stages in a stable order", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await record({
+    configPath: join(root, ".exevra.yml"),
+    write: true,
+    generatedAt: "2026-08-12T00:00:00.000Z",
+  });
+  await writeFile(
+    join(root, ".exevra.yml"),
+    JSON.stringify({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command:
+        `node -e "require('node:fs').appendFileSync('command-count.txt', '1')"` +
+        " && node tools/fake-junit-command.mjs artifacts/junit.xml",
+      reports: ["artifacts/junit.xml"],
+      watched: ["runner-config.json"],
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    }),
+  );
+
+  const result = await doctor({ configPath: join(root, ".exevra.yml") });
+
+  assert.deepEqual(
+    result.checks.map(({ name, status }) => ({ name, status })),
+    [
+      { name: "configuration", status: "passed" },
+      { name: "execution intent", status: "passed" },
+      { name: "test command", status: "passed" },
+      { name: "reports", status: "passed" },
+      { name: "baseline", status: "passed" },
+      { name: "evaluation", status: "passed" },
+    ],
+  );
+  assert.deepEqual(result.findings, []);
+  assert.equal(await readFile(join(root, "command-count.txt"), "utf8"), "1");
+  for (const { message } of result.checks) {
+    assert.doesNotMatch(message, /command-count\.txt|fake-junit-command|artifacts\/junit\.xml/);
+  }
+});
+
+test("doctor preserves the existing filter preflight and skips later stages", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenFilterConfig(
+    root,
+    "enforce",
+    mavenFilterCommand("doctor-filter-sentinel"),
+  );
+  const result = await doctor({ configPath: join(root, ".exevra.yml") });
+  assert.equal(result.checks[1]?.status, "failed");
+  assert.deepEqual(
+    result.checks.slice(2).map(({ status }) => status),
+    ["skipped", "skipped", "skipped", "skipped"],
+  );
+  assert.deepEqual(
+    result.findings.map(({ code, severity }) => ({ code, severity })),
+    [{ code: "TEST_FILTERED", severity: "error" }],
+  );
+  await assert.rejects(readFile(join(root, "doctor-filter-sentinel")));
+});
+
+test("doctor reports a missing report without leaking report paths", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mode(root, "no-report");
+
+  const checked = await check({ configPath: join(root, ".exevra.yml") });
+  const result = await doctor({ configPath: join(root, ".exevra.yml") });
+
+  assert.deepEqual(result.findings, checked.findings);
+  assert.deepEqual(result.checks[3], {
+    name: "reports",
+    status: "failed",
+    message: "Required test reports were not produced or could not be read.",
+  });
+  assert.equal(result.checks[4]?.status, "skipped");
+  assert.equal(result.checks[5]?.status, "skipped");
+  assert.doesNotMatch(
+    result.checks[3]?.message ?? "",
+    /artifacts\/junit\.xml/,
+  );
+});
+
+test("doctor reports a missing baseline after successful report collection", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra", "baseline.json"));
+
+  const checked = await check({ configPath: join(root, ".exevra.yml") });
+  const result = await doctor({ configPath: join(root, ".exevra.yml") });
+
+  assert.deepEqual(result.findings, checked.findings);
+  assert.deepEqual(result.checks[4], {
+    name: "baseline",
+    status: "failed",
+    message: "No reviewed baseline is available.",
+  });
+  assert.equal(result.checks[5]?.status, "skipped");
+});
+
 test("check removes a stale configured report before executing", async (t) => {
   const root = await project();
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -851,6 +1311,149 @@ test("check emits the watched-change finding only with an execution signal breac
       (finding) => finding.code === "WATCHED_CONFIG_CHANGED_WITH_SIGNAL_DROP",
     ),
   );
+});
+
+test("diff returns baseline changes without mutating config or baseline and reuses check execution", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mode(root, "reduced");
+  await writeFile(
+    join(root, ".exevra.yml"),
+    JSON.stringify({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command:
+        `node -e "require('node:fs').appendFileSync('command-count.txt', '1')"` +
+        " && node tools/fake-junit-command.mjs artifacts/fresh-junit.xml",
+      reports: ["artifacts/fresh-junit.xml"],
+      watched: ["runner-config.json"],
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    }),
+  );
+  const configBefore = await readFile(join(root, ".exevra.yml"), "utf8");
+  const baselineBefore = await readFile(
+    join(root, ".exevra", "baseline.json"),
+    "utf8",
+  );
+
+  const result = await diff({
+    configPath: join(root, ".exevra.yml"),
+    changedPaths: ["runner-config.json"],
+  });
+
+  assert.deepEqual(result.changes, {
+    suites: [
+      {
+        name: "unit",
+        kind: "changed",
+        baseline: { executed: 10, skipped: 0 },
+        current: { executed: 8, skipped: 0 },
+      },
+    ],
+    commandChanged: true,
+    reportsChanged: true,
+  });
+  assert.ok(
+    result.findings.some((finding) => finding.code === "SUITE_DROP_EXCEEDED"),
+  );
+  assert.ok(
+    result.findings.some(
+      (finding) => finding.code === "WATCHED_CONFIG_CHANGED_WITH_SIGNAL_DROP",
+    ),
+  );
+  assert.equal(
+    await readFile(join(root, "command-count.txt"), "utf8"),
+    "1",
+  );
+  assert.equal(await readFile(join(root, ".exevra.yml"), "utf8"), configBefore);
+  assert.equal(
+    await readFile(join(root, ".exevra", "baseline.json"), "utf8"),
+    baselineBefore,
+  );
+});
+
+test("diff omits changes for missing or unsupported baselines and missing reports", async (t) => {
+  for (const setup of [
+    async (root: string) => {
+      await rm(join(root, ".exevra", "baseline.json"));
+      return "BASELINE_MISSING";
+    },
+    async (root: string) => {
+      await writeFile(
+        join(root, ".exevra", "baseline.json"),
+        JSON.stringify({ schemaVersion: 2 }),
+      );
+      return "BASELINE_SCHEMA_UNSUPPORTED";
+    },
+    async (root: string) => {
+      await mode(root, "no-report");
+      return "REPORT_MISSING";
+    },
+  ] as const) {
+    const root = await project();
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const expected = await setup(root);
+
+    const result = await diff({ configPath: join(root, ".exevra.yml") });
+
+    assert.equal("changes" in result, false);
+    assert.ok(result.findings.some((finding) => finding.code === expected));
+  }
+});
+
+test("diff applies Maven filter preflight before reading an invalid baseline", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const sentinel = "diff-filter-sentinel";
+  await writeMavenFilterConfig(root, "enforce", mavenFilterCommand(sentinel));
+  await writeFile(join(root, ".exevra", "baseline.json"), "{not json");
+
+  const result = await diff({ configPath: join(root, ".exevra.yml") });
+
+  assert.ok(result.findings.some((finding) => finding.code === "TEST_FILTERED"));
+  await assert.rejects(readFile(join(root, sentinel)));
+});
+
+test("diff uses the original baseline snapshot even if the command overwrites the baseline file", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mode(root, "reduced");
+  await writeFile(
+    join(root, ".exevra.yml"),
+    JSON.stringify({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command:
+        "node -e " +
+        JSON.stringify(
+          "const fs = require('node:fs');" +
+            "fs.writeFileSync('.exevra/baseline.json', '{not json');",
+        ) +
+        " && node tools/fake-junit-command.mjs artifacts/fresh-junit.xml",
+      reports: ["artifacts/fresh-junit.xml"],
+      watched: ["runner-config.json"],
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    }),
+  );
+
+  const result = await diff({ configPath: join(root, ".exevra.yml") });
+
+  assert.deepEqual(result.changes, {
+    suites: [
+      {
+        name: "unit",
+        kind: "changed",
+        baseline: { executed: 10, skipped: 0 },
+        current: { executed: 8, skipped: 0 },
+      },
+    ],
+    commandChanged: true,
+    reportsChanged: true,
+  });
+  assert.ok(
+    result.findings.some((finding) => finding.code === "SUITE_DROP_EXCEEDED"),
+  );
+  assert.equal(await readFile(join(root, ".exevra", "baseline.json"), "utf8"), "{not json");
 });
 
 test("record refuses symlinked baseline parents and baseline targets without touching outside files", async (t) => {

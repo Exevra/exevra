@@ -1,7 +1,9 @@
 import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { stringify } from "yaml";
-import { loadConfig } from "../core/index.js";
+import { loadConfig, type GradleConfig, type MavenConfig } from "../core/index.js";
+import { discoverGradleModules } from "./gradle.js";
+import { discoverMavenModules } from "./maven.js";
 import { record, type RecordResult } from "./record.js";
 import {
   assertSafeInRootPath,
@@ -13,6 +15,8 @@ export interface InitializeOptions {
   configPath: string;
   command: string;
   reportPath: string | string[];
+  maven?: boolean;
+  gradle?: boolean;
 }
 
 export interface InitializeResult {
@@ -179,13 +183,27 @@ const assertAsciiRolePath = (
     );
 };
 
-const sourceFor = (command: string, reportPaths: string[]): string =>
+const sourceFor = (
+  command: string,
+  reportPaths: string[],
+  maven?: MavenConfig,
+  gradle?: GradleConfig,
+): string =>
   stringify(
     {
       version: 1,
       baseline: generatedBaselinePath,
       command,
       reports: reportPaths,
+      ...(maven === undefined
+        ? {}
+        : {
+            maven: {
+              modules: maven.modules,
+              filter_policy: maven.filterPolicy ?? "warn",
+            },
+          }),
+      ...(gradle === undefined ? {} : { gradle: { modules: gradle.modules } }),
       policy: {
         default: {
           min_executed: 1,
@@ -197,6 +215,11 @@ const sourceFor = (command: string, reportPaths: string[]): string =>
     },
     { lineWidth: 0 },
   );
+
+const gradleCommand = async (root: string, command: string): Promise<string> =>
+  command === "gradle test" && (await fileExists(join(root, "gradlew")))
+    ? "./gradlew test"
+    : command;
 
 const comparisonKey = (value: string): string =>
   value.normalize("NFC").toLowerCase();
@@ -229,15 +252,33 @@ export const initialize = async ({
   configPath,
   command,
   reportPath,
+  maven,
+  gradle,
 }: InitializeOptions): Promise<InitializeResult> => {
   const reportPaths = Array.isArray(reportPath) ? reportPath : [reportPath];
+  const root = await realpath(dirname(resolve(configPath)));
+  if (maven && gradle)
+    throw new RuntimeError("maven and gradle cannot both be enabled");
+  if (maven) await discoverMavenModules(root);
+  if (gradle) await discoverGradleModules(root);
+  const mavenConfig = maven
+    ? { modules: "auto" as const, filterPolicy: "warn" as const }
+    : undefined;
+  const gradleConfig = gradle ? { modules: "auto" as const } : undefined;
   const targetName = basename(resolve(configPath));
   assertAsciiRolePath("configuration", targetName);
   for (const path of reportPaths) assertAsciiRolePath("report", path);
   assertAsciiRolePath("baseline", generatedBaselinePath);
-  const source = sourceFor(command, reportPaths);
+  const configuredCommand = gradle
+    ? await gradleCommand(root, command)
+    : command;
+  const source = sourceFor(
+    configuredCommand,
+    reportPaths,
+    mavenConfig,
+    gradleConfig,
+  );
   const config = loadConfig(source);
-  const root = await realpath(dirname(resolve(configPath)));
   const target = join(root, targetName);
   const baselinePath = resolveInRoot(root, config.baseline);
   const configuredReportPaths = config.reports.map((report) =>

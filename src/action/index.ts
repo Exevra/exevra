@@ -1,4 +1,5 @@
 import { renderText, type Finding } from "../core/index.js";
+import { renderGitHubSummaryText } from "../cli/summary.js";
 import type { CheckOptions, CheckResult } from "../runtime/index.js";
 
 export interface ActionCore {
@@ -63,7 +64,7 @@ export const runAction = async ({
       configPath: core.getInput("config"),
       ...(baseRef === undefined ? {} : { baseRef }),
     });
-    const summary = renderText(checked, {
+    const summary = renderGitHubSummaryText(checked, {
       identityDiffs: checked.identityDiffs,
     });
     for (const finding of checked.findings) {
