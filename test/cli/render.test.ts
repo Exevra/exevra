@@ -173,7 +173,12 @@ test("GitHub summaries keep finding details and test identities private", () => 
 
   assert.match(summary, /^## Exevra\n\n<pre><code>/);
   assert.match(summary, /REPORT_UNREADABLE/);
-  assert.doesNotMatch(summary, /SECRET_REPORT|Review|<script>|secret-test-id/);
+  assert.equal(
+    ["SECRET_REPORT", "Review", "<script>", "secret-test-id"].some((value) =>
+      summary.includes(value),
+    ),
+    false,
+  );
 });
 
 test("renderers preserve aggregate findings in every output contract", () => {
