@@ -1,6 +1,6 @@
 {
   "name": "@exevra-dev/cli",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": false,
   "license": "MIT",
   "type": "module",
@@ -34,6 +34,8 @@
     "docs:build": "npm run build --prefix website",
     "docs:check": "npm ci --prefix website && npm run docs:build",
     "test": "npm run bundle && node --test build/test/core/*.test.js build/test/runtime/*.test.js build/test/cli/*.test.js build/test/action/*.test.js",
+    "test:junit": "npm run bundle && mkdir -p artifacts && env -u GITHUB_STEP_SUMMARY node --test --test-reporter=junit --test-reporter-destination=artifacts/junit.xml build/test/core/*.test.js build/test/runtime/*.test.js build/test/cli/*.test.js build/test/action/*.test.js && node scripts/normalize-node-junit.mjs",
+    "test:coverage": "npm run bundle && mkdir -p coverage && node --experimental-test-coverage --test-coverage-lines=95 --test-coverage-branches=85 --test-reporter=spec --test-reporter=lcov --test-reporter-destination=stdout --test-reporter-destination=coverage/lcov.info --test-coverage-include='build/src/**/*.js' --test build/test/core/*.test.js build/test/runtime/*.test.js build/test/cli/*.test.js build/test/action/*.test.js",
     "test:core": "npm run build && node --test build/test/core/*.test.js",
     "test:runtime": "npm run build && node --test build/test/runtime/*.test.js",
     "test:cli": "npm run build && node --test build/test/cli/*.test.js"

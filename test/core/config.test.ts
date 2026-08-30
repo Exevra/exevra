@@ -20,6 +20,75 @@ test("loads and normalizes a YAML configuration string", () => {
   assert.deepEqual(config.watched, []);
 });
 
+test("loads Maven module discovery configuration", () => {
+  assert.deepEqual(
+    loadConfig({ ...valid, maven: { modules: "auto" } }).maven,
+    { modules: "auto", filterPolicy: "warn" },
+  );
+});
+
+test("loads Gradle module discovery configuration", () => {
+  assert.deepEqual(
+    loadConfig({ ...valid, gradle: { modules: "auto" } }).gradle,
+    { modules: "auto" },
+  );
+});
+
+test("defaults and parses Maven filter policy", () => {
+  assert.equal(
+    loadConfig({ ...valid, maven: { modules: "auto" } }).maven?.filterPolicy,
+    "warn",
+  );
+  assert.equal(
+    loadConfig({
+      ...valid,
+      maven: { modules: "auto", filter_policy: "off" },
+    }).maven?.filterPolicy,
+    "off",
+  );
+  assert.equal(
+    loadConfig({
+      ...valid,
+      maven: { modules: "auto", filter_policy: "enforce" },
+    }).maven?.filterPolicy,
+    "enforce",
+  );
+});
+
+test("rejects invalid Maven module discovery configuration", () => {
+  assert.throws(
+    () => loadConfig({ ...valid, maven: { modules: "manual" } }),
+    /maven\.modules must be auto/,
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        ...valid,
+        maven: { modules: "auto", filter_policy: "maybe" },
+      }),
+    /maven\.filter_policy must be off, warn, or enforce/,
+  );
+  assert.throws(
+    () => loadConfig({ ...valid, maven: true }),
+    /maven must be an object/,
+  );
+});
+
+test("rejects invalid or conflicting Gradle module discovery configuration", () => {
+  assert.throws(
+    () => loadConfig({ ...valid, gradle: { modules: "manual" } }),
+    /gradle\.modules must be auto/,
+  );
+  assert.throws(
+    () => loadConfig({ ...valid, gradle: true }),
+    /gradle must be an object/,
+  );
+  assert.throws(
+    () => loadConfig({ ...valid, maven: { modules: "auto" }, gradle: { modules: "auto" } }),
+    /maven and gradle cannot both be configured/,
+  );
+});
+
 test("defaults and parses identity policy", () => {
   assert.equal(loadConfig(valid).policy.default.identity, "warn");
   assert.equal(

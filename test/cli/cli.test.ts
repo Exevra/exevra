@@ -185,8 +185,11 @@ test("compiled CLI prints help for standard help flags", async (t) => {
     "Commands:\n" +
     "  init [--command <command> --report <path>]\n" +
     "  init --maven\n" +
+    "  init --gradle\n" +
     "  record [--config <path>] [--write]\n" +
     "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
+    "  doctor [--config <path>] [--format text|json|github-actions]\n" +
+    "  diff [--config <path>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
     "  aggregate [--config <path>] [--mode enforce|advisory] [--format text|json|github-actions]\n\n" +
     "Options:\n" +
     "  -h, --help  Show this help\n";
@@ -196,6 +199,70 @@ test("compiled CLI prints help for standard help flags", async (t) => {
     assert.equal(result.code, 0);
     assert.equal(result.stdout, expected);
     assert.equal(result.stderr, "");
+  }
+});
+
+test("compiled CLI prints help for the diff command", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  for (const flag of ["-h", "--help"]) {
+    const result = await run(root, "diff", flag);
+    assert.equal(result.code, 0);
+    assert.match(
+      result.stdout,
+      /diff \[--config <path>\] \[--mode enforce\|advisory\] \[--format text\|json\|github-actions\]/,
+    );
+    assert.equal(result.stderr, "");
+  }
+});
+
+test("compiled CLI prints help for the doctor command", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  for (const flag of ["-h", "--help"]) {
+    const result = await run(root, "doctor", flag);
+    assert.equal(result.code, 0);
+    assert.match(
+      result.stdout,
+      /doctor \[--config <path>\] \[--format text\|json\|github-actions\]/,
+    );
+    assert.equal(result.stderr, "");
+  }
+});
+
+test("compiled CLI writes a privacy-safe GitHub step summary", async (t) => {
+  const root = await project();
+  const summary = join(root, "summary.md");
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "runner-config.json"), '{ "mode": "reduced" }\n');
+
+  const result = await runWithEnvironment(
+    root,
+    { GITHUB_STEP_SUMMARY: summary },
+    "check",
+    "--format",
+    "github-actions",
+  );
+
+  assert.equal(result.code, 1);
+  const summaryText = await readFile(summary, "utf8");
+  assert.match(summaryText, /^## Exevra\n/);
+  assert.match(summaryText, /EXEVRA BLOCKED/);
+  assert.match(summaryText, /SUITE_DROP_EXCEEDED/);
+  assert.doesNotMatch(summaryText, /test-1|<testsuite|SECRET/);
+});
+
+test("compiled CLI does not broaden command help to unrelated commands", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  for (const command of ["init", "record", "check", "aggregate"]) {
+    const result = await run(root, command, "--help");
+    assert.equal(result.code, 2);
+    assert.equal(result.stdout, "");
+    assert.notEqual(result.stderr, "");
   }
 });
 
@@ -225,9 +292,103 @@ test("compiled CLI initializes standard Surefire and Failsafe reports", async (t
   assert.equal(initialized.code, 0, initialized.stderr);
   const config = await readFile(join(root, ".exevra.yml"), "utf8");
   assert.match(config, /command: mvn verify/);
+  assert.match(config, /maven:\n  modules: auto\n  filter_policy: warn/);
   assert.match(config, /target\/surefire-reports\/TEST-\*\.xml/);
   assert.match(config, /target\/failsafe-reports\/TEST-\*\.xml/);
   await readFile(join(root, ".exevra", "baseline.json"), "utf8");
+});
+
+test("compiled CLI initializes Maven modules and records child suites", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra.yml"), { force: true });
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  await mkdir(join(root, "service"));
+  await mkdir(join(root, "integration", "e2e"), { recursive: true });
+  await writeFile(
+    join(root, "pom.xml"),
+    `<project><packaging>pom</packaging><modules><module>service</module><module>integration</module></modules></project>`,
+  );
+  await writeFile(join(root, "service", "pom.xml"), "<project><packaging>jar</packaging></project>");
+  await writeFile(
+    join(root, "integration", "pom.xml"),
+    `<project><packaging>pom</packaging><modules><module>e2e</module></modules></project>`,
+  );
+  await writeFile(join(root, "integration", "e2e", "pom.xml"), "<project><packaging>jar</packaging></project>");
+  await writeFile(
+    join(root, "tools", "fake-maven-command.mjs"),
+    "import { mkdir, writeFile } from 'node:fs/promises';\n" +
+      "for (const [path, suite] of [['service/target/surefire-reports/TEST-service.xml', 'service'], ['integration/e2e/target/failsafe-reports/TEST-e2e.xml', 'e2e']]) {\n" +
+      "  await mkdir(path.split('/').slice(0, -1).join('/'), { recursive: true });\n" +
+      "  await writeFile(path, `<testsuite name=\"${suite}\"><testcase classname=\"${suite}\" name=\"test-1\"/></testsuite>`);\n" +
+      "}\n",
+  );
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "mvn"),
+    "#!/usr/bin/env sh\nnode tools/fake-maven-command.mjs\n",
+  );
+  await chmod(join(bin, "mvn"), 0o755);
+
+  const initialized = await runWithEnvironment(
+    root,
+    { PATH: `${bin}:${process.env.PATH ?? ""}` },
+    "init",
+    "--maven",
+  );
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  assert.match(
+    await readFile(join(root, ".exevra.yml"), "utf8"),
+    /maven:\n  modules: auto/,
+  );
+  const baseline = JSON.parse(
+    await readFile(join(root, ".exevra", "baseline.json"), "utf8"),
+  ) as { suites: Array<{ name: string }> };
+  assert.deepEqual(baseline.suites.map((suite) => suite.name), ["e2e", "service"]);
+});
+
+test("compiled CLI initializes Gradle projects and records child suites", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra.yml"), { force: true });
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  await mkdir(join(root, "app"));
+  await writeFile(
+    join(root, "settings.gradle"),
+    "rootProject.name = 'sample'\ninclude ':app'\n",
+  );
+  await writeFile(
+    join(root, "tools", "fake-gradle-command.mjs"),
+    "import { mkdir, writeFile } from 'node:fs/promises';\n" +
+      "await mkdir('app/build/test-results/test', { recursive: true });\n" +
+      "await writeFile('app/build/test-results/test/TEST-app.xml', '<testsuite name=\"app\"><testcase classname=\"app\" name=\"test-1\"/></testsuite>');\n",
+  );
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "gradle"),
+    "#!/usr/bin/env sh\nnode tools/fake-gradle-command.mjs\n",
+  );
+  await chmod(join(bin, "gradle"), 0o755);
+
+  const initialized = await runWithEnvironment(
+    root,
+    { PATH: `${bin}:${process.env.PATH ?? ""}` },
+    "init",
+    "--gradle",
+  );
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  assert.match(
+    await readFile(join(root, ".exevra.yml"), "utf8"),
+    /command: gradle test[\s\S]*gradle:\n  modules: auto/,
+  );
+  const baseline = JSON.parse(
+    await readFile(join(root, ".exevra", "baseline.json"), "utf8"),
+  ) as { suites: Array<{ name: string }> };
+  assert.deepEqual(baseline.suites.map((suite) => suite.name), ["app"]);
 });
 
 test("compiled CLI initializes a Node project without init flags", async (t) => {
@@ -431,6 +592,35 @@ test("compiled CLI initializes when only standard Surefire reports exist", async
     mvn,
     "#!/usr/bin/env sh\n" +
       "node tools/fake-junit-command.mjs target/surefire-reports/TEST-unit.xml\n",
+  );
+  await chmod(mvn, 0o755);
+
+  const initialized = await runWithEnvironment(
+    root,
+    { PATH: `${bin}:${process.env.PATH ?? ""}` },
+    "init",
+    "--maven",
+  );
+
+  assert.equal(initialized.code, 0, initialized.stderr);
+  assert.match(
+    await readFile(join(root, ".exevra.yml"), "utf8"),
+    /maven:\n  modules: auto\n  filter_policy: warn/,
+  );
+});
+
+test("compiled CLI initializes when only standard Failsafe reports exist", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra.yml"), { force: true });
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  const mvn = join(bin, "mvn");
+  await writeFile(
+    mvn,
+    "#!/usr/bin/env sh\n" +
+      "node tools/fake-junit-command.mjs target/failsafe-reports/TEST-integration.xml\n",
   );
   await chmod(mvn, 0o755);
 
@@ -788,6 +978,31 @@ test("compiled CLI records a baseline only with explicit overwrite permission", 
   );
 });
 
+test("compiled CLI keeps Maven filter warnings non-blocking for record", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra"), { recursive: true, force: true });
+  await writeFile(
+    join(root, ".exevra.yml"),
+    JSON.stringify({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command:
+        "node -e \"require('node:fs').writeFileSync('cli-warn-sentinel', 'ran')\" && node tools/fake-junit-command.mjs target/surefire-reports/TEST-unit.xml -Dtest=SecretTest",
+      reports: ["target/surefire-reports/TEST-*.xml"],
+      maven: { modules: "auto", filter_policy: "warn" },
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    }),
+  );
+
+  const result = await run(root, "record", "--write");
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /TEST_FILTERED/);
+  assert.doesNotMatch(result.stdout, /SecretTest/);
+  assert.equal(await readFile(join(root, "cli-warn-sentinel"), "utf8"), "ran");
+});
+
 test("compiled CLI treats record command and report failures as operational errors", async (t) => {
   const root = await project();
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -857,6 +1072,179 @@ test("compiled CLI reports pass, enforcement, advisory, and output formats", asy
     /::error title=EXEVRA NO_TESTS_EXECUTED::/,
   );
   assert.match(githubActions.stdout, /unit: 10 -> 0/);
+});
+
+test("compiled CLI exposes deterministic diff output and exit modes", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "tools", "fake-diff-command.mjs"),
+    "import { mkdir, writeFile } from 'node:fs/promises';\n" +
+      "await mkdir('artifacts', { recursive: true });\n" +
+      "await writeFile(\n" +
+      "  'artifacts/unit.xml',\n" +
+      "  '<testsuite name=\"unit\">' +\n" +
+      "    Array.from({ length: 8 }, (_, index) => `<testcase classname=\"unit\" name=\"test-${index + 1}\"/>`).join('') +\n" +
+      "    Array.from({ length: 2 }, (_, index) => `<testcase classname=\"unit\" name=\"test-${index + 9}\"><skipped/></testcase>`).join('') +\n" +
+      "  '</testsuite>\\n',\n" +
+      ");\n" +
+      "await writeFile(\n" +
+      "  'artifacts/integration.xml',\n" +
+      "  '<testsuite name=\"integration\">' +\n" +
+      "    Array.from({ length: 2 }, (_, index) => `<testcase classname=\"integration\" name=\"integration-${index + 1}\"/>`).join('') +\n" +
+      "  '</testsuite>\\n',\n" +
+      ");\n",
+  );
+  await writeFile(
+    join(root, ".exevra.yml"),
+    JSON.stringify({
+      version: 1,
+      baseline: ".exevra/baseline.json",
+      command: "node tools/fake-diff-command.mjs",
+      reports: ["artifacts/unit.xml", "artifacts/integration.xml"],
+      watched: [],
+      policy: {
+        default: {
+          min_executed: 0,
+          max_drop_percent: 100,
+          identity: "off",
+        },
+        protected_suites: [
+          {
+            name: "unit",
+            match: "^unit$",
+            min_executed: 1,
+            max_drop_percent: 10,
+            identity: "off",
+          },
+        ],
+      },
+    }),
+  );
+  await writeFile(
+    join(root, ".exevra", "baseline.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: "2026-08-12T00:00:00.000Z",
+      command: "node tools/fake-diff-command.mjs",
+      reports: ["artifacts/integration.xml", "artifacts/unit.xml"],
+      suites: [
+        {
+          name: "legacy",
+          executed: 4,
+          skipped: 0,
+          testIdsHash: `sha256:${"a".repeat(64)}`,
+        },
+        {
+          name: "unit",
+          executed: 10,
+          skipped: 1,
+          testIdsHash: `sha256:${"b".repeat(64)}`,
+        },
+      ],
+    }),
+  );
+
+  const enforced = await run(root, "diff");
+  assert.equal(enforced.code, 1);
+  assert.match(enforced.stdout, /^EXEVRA BLOCKED/m);
+  assert.match(enforced.stdout, /DIFF/);
+  assert.match(enforced.stdout, /command changed: no/);
+  assert.match(enforced.stdout, /reports changed: no/);
+  assert.match(
+    enforced.stdout,
+    /suite added: integration \(2 executed, 0 skipped\)/,
+  );
+  assert.match(
+    enforced.stdout,
+    /suite removed: legacy \(4 executed, 0 skipped\)/,
+  );
+  assert.match(
+    enforced.stdout,
+    /suite changed: unit \(10 -> 8 executed, 1 -> 2 skipped\)/,
+  );
+
+  const advisory = await run(root, "diff", "--mode", "advisory");
+  assert.equal(advisory.code, 0);
+  assert.equal(advisory.stdout, enforced.stdout);
+
+  const json = await run(root, "diff", "--format", "json");
+  assert.equal(json.code, 1);
+  const parsedDiff = JSON.parse(json.stdout) as {
+    outcome: string;
+    changes?: {
+      commandChanged: boolean;
+      reportsChanged: boolean;
+      suites: Array<Record<string, unknown>>;
+    };
+    suites: Array<Record<string, unknown>>;
+  };
+  assert.equal(parsedDiff.outcome, "blocked");
+  assert.deepEqual(parsedDiff.suites, [
+    { name: "integration", executed: 2, skipped: 0 },
+    { name: "unit", executed: 8, skipped: 2 },
+  ]);
+  assert.deepEqual(parsedDiff.changes, {
+    commandChanged: false,
+    reportsChanged: false,
+    suites: [
+      {
+        name: "integration",
+        kind: "added",
+        current: { executed: 2, skipped: 0 },
+      },
+      {
+        name: "legacy",
+        kind: "removed",
+        baseline: { executed: 4, skipped: 0 },
+      },
+      {
+        name: "unit",
+        kind: "changed",
+        baseline: { executed: 10, skipped: 1 },
+        current: { executed: 8, skipped: 2 },
+      },
+    ],
+  });
+  const ordinaryCheck = JSON.parse(
+    (await run(root, "check", "--format", "json")).stdout,
+  ) as Record<string, unknown>;
+  assert.equal("changes" in ordinaryCheck, false);
+  assert.doesNotMatch(
+    json.stdout,
+    /fake-diff-command|artifacts\/unit\.xml|artifacts\/integration\.xml|test-1/,
+  );
+
+  const githubActions = await run(root, "diff", "--format", "github-actions");
+  assert.equal(githubActions.code, 1);
+  assert.match(
+    githubActions.stdout,
+    /::notice title=EXEVRA DIFF::DIFF/,
+  );
+  assert.match(
+    githubActions.stdout,
+    /::notice title=EXEVRA DIFF::command changed: no/,
+  );
+  assert.match(
+    githubActions.stdout,
+    /::notice title=EXEVRA DIFF::suite added: integration \(2 executed, 0 skipped\)/,
+  );
+  assert.match(
+    githubActions.stdout,
+    /::notice title=EXEVRA DIFF::suite changed: unit \(10 -> 8 executed, 1 -> 2 skipped\)/,
+  );
+  assert.match(
+    githubActions.stdout,
+    /::notice title=EXEVRA DIFF::suite removed: legacy \(4 executed, 0 skipped\)/,
+  );
+  assert.doesNotMatch(
+    githubActions.stdout,
+    /fake-diff-command|artifacts\/unit\.xml|artifacts\/integration\.xml|<testsuite|test-1/,
+  );
+
+  const operational = await run(root, "diff", "--config", "missing.yml");
+  assert.equal(operational.code, 2);
+  assert.match(operational.stderr, /Operational error/);
 });
 
 test("compiled CLI aggregates shard reports in every output format", async (t) => {
@@ -1036,6 +1424,11 @@ test("compiled CLI rejects invalid invocations and operational failures with exi
   assert.match(aggregateWithoutConfig.stderr, /aggregation configuration is required/);
 
   for (const arguments_ of [
+    ["doctor", "--base-ref", "HEAD"],
+    ["doctor", "--mode", "advisory"],
+    ["doctor", "--write"],
+    ["diff", "--base-ref", "HEAD"],
+    ["diff", "--write"],
     ["aggregate", "--base-ref", "HEAD"],
     ["aggregate", "--write"],
   ]) {
@@ -1043,6 +1436,30 @@ test("compiled CLI rejects invalid invocations and operational failures with exi
     assert.equal(result.code, 2, arguments_.join(" "));
     assert.match(result.stderr, /Invalid invocation/);
   }
+});
+
+test("doctor exit-2 errors do not echo arguments or paths", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const invalid = await run(root, "doctor", "--attacker-controlled-option");
+  assert.equal(invalid.code, 2);
+  assert.equal(invalid.stdout, "");
+  assert.equal(invalid.stderr, "Invalid invocation: doctor arguments are invalid\n");
+
+  const secretConfig = "/private/doctor-operational-secret.yml";
+  const operational = await run(root, "doctor", "--config", secretConfig);
+  assert.equal(operational.code, 2);
+  assert.equal(operational.stdout, "");
+  assert.equal(
+    operational.stderr,
+    "Operational error: doctor could not complete\n",
+  );
+  assert.doesNotMatch(operational.stderr, /private|doctor-operational-secret/);
+
+  const check = await run(root, "check", "--config", secretConfig);
+  assert.equal(check.code, 2);
+  assert.match(check.stderr, /doctor-operational-secret/);
 });
 
 test("compiled CLI rejects duplicate and incomplete options", async (t) => {
@@ -1056,6 +1473,11 @@ test("compiled CLI rejects duplicate and incomplete options", async (t) => {
     ["check", "--base-ref"],
     ["check", "--mode"],
     ["check", "--format"],
+    ["doctor", "--config"],
+    ["doctor", "--format"],
+    ["diff", "--config"],
+    ["diff", "--mode"],
+    ["diff", "--format"],
     ["aggregate", "--config"],
     ["aggregate", "--mode"],
     ["aggregate", "--format"],
@@ -1064,6 +1486,120 @@ test("compiled CLI rejects duplicate and incomplete options", async (t) => {
     assert.equal(result.code, 2, arguments_.join(" "));
     assert.match(result.stderr, /Invalid invocation/);
   }
+});
+
+test("compiled CLI exposes doctor output formats and exit codes", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.equal((await run(root, "record", "--write")).code, 0);
+
+  const passed = await run(root, "doctor");
+  assert.equal(passed.code, 0);
+  assert.match(
+    passed.stdout,
+    /DOCTOR\nconfiguration: passed - Configuration loaded and paths are valid\./,
+  );
+  assert.match(
+    passed.stdout,
+    /evaluation: passed - Existing execution-integrity rules passed\./,
+  );
+
+  await writeFile(
+    join(root, "runner-config.json"),
+    JSON.stringify({ mode: "zero" }),
+  );
+
+  const blocked = await run(root, "doctor");
+  assert.equal(blocked.code, 1);
+  assert.match(blocked.stdout, /^EXEVRA BLOCKED/m);
+  assert.match(
+    blocked.stdout,
+    /test command: passed - The configured test command completed\./,
+  );
+  assert.match(
+    blocked.stdout,
+    /evaluation: failed - Existing execution-integrity rules failed\./,
+  );
+
+  const json = await run(root, "doctor", "--format", "json");
+  assert.equal(json.code, 1);
+  assert.deepEqual(
+    JSON.parse(json.stdout).checks.map(
+      (check: { name: string; status: string }) => [check.name, check.status],
+    ),
+    [
+      ["configuration", "passed"],
+      ["execution intent", "passed"],
+      ["test command", "passed"],
+      ["reports", "passed"],
+      ["baseline", "passed"],
+      ["evaluation", "failed"],
+    ],
+  );
+  assert.equal(
+    "checks" in JSON.parse((await run(root, "check", "--format", "json")).stdout),
+    false,
+  );
+  assert.equal(
+    "checks" in JSON.parse((await run(root, "diff", "--format", "json")).stdout),
+    false,
+  );
+  const aggregate = await run(root, "aggregate", "--format", "json");
+  assert.equal(aggregate.code, 2);
+  assert.equal(aggregate.stdout, "");
+  assert.match(aggregate.stderr, /aggregation configuration is required/);
+
+  const githubActions = await run(
+    root,
+    "doctor",
+    "--format",
+    "github-actions",
+  );
+  assert.equal(githubActions.code, 1);
+  assert.match(
+    githubActions.stdout,
+    /::notice title=EXEVRA DOCTOR::DOCTOR/,
+  );
+  assert.match(
+    githubActions.stdout,
+    /::notice title=EXEVRA DOCTOR::execution intent: passed - Execution intent is safe to evaluate\./,
+  );
+  assert.doesNotMatch(
+    githubActions.stdout,
+    /node tools\/fake-junit-command|test-1|<testsuite/,
+  );
+});
+
+test("doctor suppresses configured command stdout and stderr in every format", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.equal((await run(root, "record", "--write")).code, 0);
+
+  const configPath = join(root, ".exevra.yml");
+  const config = await readFile(configPath, "utf8");
+  await writeFile(
+    configPath,
+    config.replace(
+      "command: node tools/fake-junit-command.mjs artifacts/junit.xml",
+      "command: node tools/fake-junit-command.mjs artifacts/junit.xml && printf 'DOCTOR_STDOUT_/private/secret\\n' && printf 'DOCTOR_STDERR_/private/secret\\n' >&2",
+    ),
+  );
+
+  for (const format of ["text", "json", "github-actions"]) {
+    const result = await run(root, "doctor", "--format", format);
+    assert.equal(result.code, 0, format);
+    assert.doesNotMatch(result.stdout, /DOCTOR_STDOUT_|DOCTOR_STDERR_|\/private\/secret/);
+    assert.equal(result.stderr, "", format);
+    if (format === "json") {
+      const output = JSON.parse(result.stdout) as { checks: unknown[] };
+      assert.equal(output.checks.length, 6);
+    }
+  }
+
+  const check = await run(root, "check", "--format", "text");
+  assert.equal(check.code, 0);
+  assert.match(check.stdout, /DOCTOR_STDOUT_\/private\/secret/);
+  assert.match(check.stderr, /DOCTOR_STDERR_\/private\/secret/);
 });
 
 test("compiled CLI forwards a valid base ref to runtime comparison", async (t) => {

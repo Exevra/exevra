@@ -29,11 +29,32 @@ policy:
       identity_details: names
 ```
 
+For a Maven root-only or multi-module project, `init --maven` adds this marker:
+
+```yaml
+maven:
+  modules: auto
+  filter_policy: warn
+```
+
 `version` must be `1`. `baseline` is the JSON baseline path. `command` is a non-empty Bash command. `reports` is a non-empty list of unique JUnit XML paths or filename patterns. A pattern may contain `*` in its filename, not its directory, and every matched XML file is checked. Literal report paths must be produced on every run. If all report entries are patterns, at least one must match; this lets `init --maven` work for Surefire-only, Failsafe-only, and combined Maven projects. `watched` is an optional list of paths matched as globs when a base ref is available.
 
 `policy.default` is required. Its `min_executed` is a non-negative integer and `max_drop_percent` is a number from 0 through 100. `identity` accepts `off`, `warn`, or `enforce` and defaults to `warn`; `identity_details` accepts `counts` or `names` and defaults to `counts`.
 
 `policy.protected_suites` is optional. Every item needs a non-empty `name`, a valid regular-expression `match`, and the same policy fields as `default`. Exevra selects the first protected-suite policy whose regular expression matches a suite name; otherwise it uses `default`.
+
+When `maven.modules` is `auto`, Exevra follows literal `<module>` declarations from `pom.xml` files, recursively visits declared child POMs, and expands the configured standard Surefire/Failsafe report patterns in each non-aggregator module. A root-only project is represented by the same Maven marker and is checked as one module. A module may produce either report family or both. A module producing neither yields `REPORT_MISSING`; a matched report that cannot be read yields `REPORT_UNREADABLE`. Profiles, properties, parent inheritance, plugins, and custom report directories are not evaluated.
+
+`maven.filter_policy` controls lexical detection of test selection and skip flags in the configured command. It defaults to `warn` when omitted and accepts `off`, `warn`, or `enforce`. The seven supported flag families are `-Dtest`, `-Dit.test`, `-Dgroups`, `-DexcludedGroups`, `-DskipTests`, `-Dmaven.test.skip`, and `-DskipITs`. With `warn`, Exevra reports `TEST_FILTERED` and continues through report cleanup, command execution, and fresh-report evaluation. With `enforce`, it reports an error and stops after loading the configuration, before cleanup or execution. With `off`, it emits no filter finding.
+
+The detector recognizes `=value`, a following value, and value-less flags where applicable at lexical token-like boundaries. Findings contain only the matched flag names; selector values and test names are never included. This is not complete Bash or Maven parsing and does not resolve shell expansion, aliases, profiles, properties, plugins, or custom Maven configuration. Non-Maven configurations are unchanged.
+
+For Gradle multi-project builds, `gradle.modules: auto` reads literal project declarations from `settings.gradle` or `settings.gradle.kts` and expands each configured report path relative to every included project. Standard onboarding uses `build/test-results/test/TEST-*.xml`. Custom project directories assigned with `project(...).projectDir = file(...)` are supported. A missing or unreadable project report is retained as `REPORT_MISSING` or `REPORT_UNREADABLE`; a project with no settings file uses the root-only behavior. Maven and Gradle markers cannot be configured together.
+
+```yaml
+gradle:
+  modules: auto
+```
 
 ## Aggregation
 

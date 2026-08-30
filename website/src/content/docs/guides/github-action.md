@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.3.1
+      - uses: Exevra/exevra@v0.4.0
         with:
           config: .exevra.yml
           mode: enforce
@@ -34,7 +34,7 @@ jobs:
 
 `fetch-depth: 0` gives pull-request checks the base commit needed for watched-path comparison. `persist-credentials: false` prevents the repository command from inheriting checkout credentials. Exevra's Action runtime is Node 24; the example sets Node 22 for the repository command and dependencies.
 
-Use a versioned release such as `Exevra/exevra@v0.3.1`. Use `uses: ./` only when testing a checked-out copy of Exevra itself.
+Use a versioned release such as `Exevra/exevra@v0.4.0`. Use `uses: ./` only when testing a checked-out copy of Exevra itself.
 
 In `enforce` mode, error findings fail the Action. Warning findings produce annotations without failing it. `advisory` keeps all findings nonblocking. The Action adds an escaped text summary and does not require a write token or call the GitHub API.
 

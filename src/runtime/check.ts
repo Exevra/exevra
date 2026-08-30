@@ -1,73 +1,92 @@
-import type { CanonicalSuite, Finding, IdentityDiff } from "../core/index.js";
-import { evaluate } from "../core/index.js";
-import {
-  cleanReports,
-  missingReports,
-  runConfiguredCommand,
-} from "./command.js";
+import type {
+  BaselineDiff,
+  CanonicalSuite,
+  CheckResult,
+  Finding,
+} from "../core/index.js";
+import { compareBaseline, evaluate } from "../core/index.js";
+import { cleanReports, runConfiguredCommand } from "./command.js";
+import { buildReportFindings, mavenFilterFindings } from "./findings.js";
 import { changedFiles } from "./git.js";
 import { loadRuntimeConfig, readBaselineIfPresent } from "./load.js";
-import {
-  expandReportPaths,
-  loadReports,
-  missingReportPatterns,
-} from "./reports.js";
+import { expandConfiguredReportPaths, loadConfiguredReports } from "./reports.js";
 
 export interface CheckOptions {
   configPath: string;
   baseRef?: string;
   changedPaths?: string[];
+  suppressCommandOutput?: boolean;
 }
-export interface CheckResult {
-  findings: Finding[];
-  identityDiffs: IdentityDiff[];
-  suites: CanonicalSuite[];
-  notices: string[];
+export interface DiffResult extends CheckResult {
+  changes?: BaselineDiff;
 }
-const reportFinding = (path: string): Finding => ({
-  code: "REPORT_MISSING",
-  severity: "error",
-  message: `Required report was not produced: ${path}`,
-  remediation:
-    "Configure the test command to write every required JUnit report.",
-});
-
-export const check = async ({
+interface CheckSnapshot extends CheckResult {
+  config: Awaited<ReturnType<typeof loadRuntimeConfig>>["config"];
+  baseline: Awaited<ReturnType<typeof readBaselineIfPresent>>;
+}
+interface RunCheckContext {
+  loaded?: Awaited<ReturnType<typeof loadRuntimeConfig>>;
+  baselineBeforeCommand?: boolean;
+}
+const runCheck = async ({
   configPath,
   baseRef,
   changedPaths,
-}: CheckOptions): Promise<CheckResult> => {
-  const loaded = await loadRuntimeConfig(configPath);
+  suppressCommandOutput,
+}: CheckOptions, context: RunCheckContext = {}): Promise<CheckSnapshot> => {
+  const loaded = context.loaded ?? (await loadRuntimeConfig(configPath));
   const notices: string[] = [];
+  const filterFindings = loaded.config.maven
+    ? mavenFilterFindings(
+        loaded.config.command,
+        loaded.config.maven.filterPolicy ?? "warn",
+      )
+    : [];
+  if (filterFindings.some(({ severity }) => severity === "error"))
+    return {
+      findings: filterFindings,
+      identityDiffs: [],
+      suites: [],
+      notices,
+      config: loaded.config,
+      baseline: undefined,
+    };
+  const findings = filterFindings;
+  const baselineBeforeCommand = context.baselineBeforeCommand
+    ? await readBaselineIfPresent(loaded.root, loaded.baselinePath)
+    : undefined;
   await cleanReports(
-    await expandReportPaths(loaded.root, loaded.config.reports),
+    await expandConfiguredReportPaths(loaded.root, loaded.config),
   );
   const command = await runConfiguredCommand(
     loaded.root,
     loaded.config.command,
+    suppressCommandOutput,
   );
   if (command.finding)
-    return { findings: [command.finding], identityDiffs: [], suites: [], notices };
-  const currentReportPaths = await expandReportPaths(
-    loaded.root,
-    loaded.config.reports,
-  );
-  const missing = [
-    ...(await missingReports(currentReportPaths)),
-    ...(await missingReportPatterns(loaded.root, loaded.config.reports)),
-  ];
-  if (missing.length > 0)
     return {
-      findings: missing.map(reportFinding),
+      findings: [...findings, command.finding],
       identityDiffs: [],
       suites: [],
       notices,
+      config: loaded.config,
+      baseline: undefined,
     };
-  const suites = await loadReports(loaded.root, loaded.config.reports);
-  const baseline = await readBaselineIfPresent(
-    loaded.root,
-    loaded.baselinePath,
-  );
+  const reports = await loadConfiguredReports(loaded.root, loaded.config);
+  const reportFindings = buildReportFindings(reports);
+  if (reportFindings.length > 0)
+    return {
+      findings: [...findings, ...reportFindings],
+      identityDiffs: [],
+      suites: [],
+      notices,
+      config: loaded.config,
+      baseline: undefined,
+    };
+  const suites = reports.suites;
+  const baseline = context.baselineBeforeCommand
+    ? baselineBeforeCommand
+    : await readBaselineIfPresent(loaded.root, loaded.baselinePath);
   let paths = changedPaths;
   if (paths === undefined && baseRef !== undefined)
     paths = await changedFiles(loaded.root, baseRef);
@@ -112,9 +131,35 @@ export const check = async ({
     });
   }
   return {
-    findings: result.findings,
+    findings: [...findings, ...result.findings],
     identityDiffs: result.identityDiffs,
     suites,
     notices,
+    config: loaded.config,
+    baseline,
   };
 };
+
+export const check = async (options: CheckOptions): Promise<CheckResult> => {
+  const { config: _config, baseline: _baseline, ...result } = await runCheck(
+    options,
+  );
+  return result;
+};
+
+export const diff = async (options: CheckOptions): Promise<DiffResult> => {
+  const loaded = await loadRuntimeConfig(options.configPath);
+  const { config, ...result } = await runCheck(options, {
+    loaded,
+    baselineBeforeCommand: true,
+  });
+  if (result.suites.length === 0) return result;
+  const baseline = result.baseline;
+  if (!baseline || baseline.schemaVersion !== 1) return result;
+  return {
+    ...result,
+    changes: compareBaseline(baseline, result.suites, config),
+  };
+};
+
+export type { CheckResult };

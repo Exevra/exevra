@@ -245,7 +245,7 @@ test("invalid mode and malformed pull request payload fail as operational errors
   }
 });
 
-test("renders report-controlled finding content as an escaped literal summary code block", async () => {
+test("keeps report-controlled finding content out of the Action summary", async () => {
   const { toolkit: core, log } = toolkit();
   await runAction({
     core,
@@ -263,15 +263,39 @@ test("renders report-controlled finding content as an escaped literal summary co
       ]),
   });
   assert.equal(log.summaries.length, 0);
+  assert.match(log.codeBlocks[0] ?? "", /SUITE_BELOW_MINIMUM/);
+  assert.doesNotMatch(
+    log.codeBlocks[0] ?? "",
+    /not a heading|not markdown|not script|literal|<script>|<h1>/i,
+  );
+});
+
+test("escapes explicitly opted-in identity names in the Action summary", async () => {
+  const { toolkit: core, log } = toolkit();
+  await runAction({
+    core,
+    eventName: "push",
+    eventPayload: {},
+    check: async () => ({
+      ...result(),
+      findings: [],
+      identityDiffs: [
+        {
+          suite: "unit",
+          missingTestIds: ["unit\u001fremoved<name>"],
+          addedTestIds: ["unit\u001fadded<name>"],
+        },
+      ],
+    }),
+  });
   assert.match(
     log.codeBlocks[0] ?? "",
-    /&lt;\/code&gt;&lt;h1&gt;not a heading&lt;\/h1&gt;/,
+    /&quot;unit\\u001fremoved&lt;name&gt;&quot;/,
   );
   assert.match(
     log.codeBlocks[0] ?? "",
-    /# \*\*not markdown\*\* &lt;script&gt;not script&lt;\/script&gt;/,
+    /&quot;unit\\u001fadded&lt;name&gt;&quot;/,
   );
-  assert.doesNotMatch(log.codeBlocks[0] ?? "", /<script>|<h1>|<\/code>/i);
 });
 
 test("does not expose test identifiers or raw reports in Action annotations or summaries", async () => {
@@ -404,15 +428,15 @@ test("published action metadata and committed bundle exist", async () => {
   await readFile(join(process.cwd(), "dist", "index.js"), "utf8");
 });
 
-test("release package version is synchronized at 0.3.1", async () => {
+test("release package version is synchronized at 0.4.0", async () => {
   const manifest = JSON.parse(
     await readFile(join(process.cwd(), "package.json"), "utf8"),
   ) as { version: string };
   const lockfile = JSON.parse(
     await readFile(join(process.cwd(), "package-lock.json"), "utf8"),
   ) as { packages: Record<string, { version?: string }> };
-  assert.equal(manifest.version, "0.3.1");
-  assert.equal(lockfile.packages[""]?.version, "0.3.1");
+  assert.equal(manifest.version, "0.4.0");
+  assert.equal(lockfile.packages[""]?.version, "0.4.0");
 });
 
 test("release workflows and documentation pin current v7 GitHub Actions", async () => {

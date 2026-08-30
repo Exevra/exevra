@@ -11,6 +11,7 @@ Use Node 22 or later, then run:
 ```sh
 npm ci
 npm test
+npm run test:coverage
 npm run typecheck
 npm run verify:bundle
 ```

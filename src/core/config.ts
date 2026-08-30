@@ -2,8 +2,11 @@ import { parseDocument } from "yaml";
 import type {
   AggregationConfig,
   Config,
+  GradleConfig,
   IdentityDetailsPolicy,
   IdentityPolicy,
+  MavenConfig,
+  MavenFilterPolicy,
   ProtectedSuitePolicy,
   SuitePolicy,
 } from "./model.js";
@@ -85,6 +88,30 @@ const aggregation = (value: unknown): AggregationConfig => {
     shards,
     reports,
   };
+};
+
+const mavenConfig = (value: unknown): MavenConfig => {
+  if (!isRecord(value))
+    throw new CoreValidationError("maven must be an object");
+  if (value.modules !== "auto")
+    throw new CoreValidationError("maven.modules must be auto");
+  const filterPolicy =
+    value.filter_policy === undefined
+      ? "warn"
+      : (value.filter_policy as MavenFilterPolicy);
+  if (filterPolicy !== "off" && filterPolicy !== "warn" && filterPolicy !== "enforce")
+    throw new CoreValidationError(
+      "maven.filter_policy must be off, warn, or enforce",
+    );
+  return { modules: "auto", filterPolicy };
+};
+
+const gradleConfig = (value: unknown): GradleConfig => {
+  if (!isRecord(value))
+    throw new CoreValidationError("gradle must be an object");
+  if (value.modules !== "auto")
+    throw new CoreValidationError("gradle.modules must be auto");
+  return { modules: "auto" };
 };
 
 const policy = (value: unknown, field: string): SuitePolicy => {
@@ -197,6 +224,8 @@ export const loadConfig = (source: string | unknown): Config => {
       };
     },
   );
+  if (value.maven !== undefined && value.gradle !== undefined)
+    throw new CoreValidationError("maven and gradle cannot both be configured");
   return {
     version: 1,
     baseline: relativePath(value.baseline, "baseline"),
@@ -205,6 +234,8 @@ export const loadConfig = (source: string | unknown): Config => {
     watched,
     aggregation:
       value.aggregation === undefined ? undefined : aggregation(value.aggregation),
+    maven: value.maven === undefined ? undefined : mavenConfig(value.maven),
+    gradle: value.gradle === undefined ? undefined : gradleConfig(value.gradle),
     policy: {
       default: policy(value.policy.default, "policy.default"),
       protectedSuites,

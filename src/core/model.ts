@@ -1,3 +1,5 @@
+import type { IdentityDiff } from "./identity.js";
+
 export type FindingCode =
   | "REPORT_MISSING"
   | "SHARD_MISSING"
@@ -9,11 +11,15 @@ export type FindingCode =
   | "TEST_IDENTITIES_CHANGED"
   | "BASELINE_MISSING"
   | "BASELINE_SCHEMA_UNSUPPORTED"
-  | "TEST_COMMAND_FAILED";
+  | "REPORT_UNREADABLE"
+  | "TEST_COMMAND_FAILED"
+  | "TEST_FILTERED";
 
 export type TestStatus = "passed" | "skipped" | "failed" | "error";
 
 export type IdentityPolicy = "off" | "warn" | "enforce";
+
+export type MavenFilterPolicy = "off" | "warn" | "enforce";
 
 export type IdentityDetailsPolicy = "counts" | "names";
 
@@ -47,6 +53,15 @@ export interface AggregationConfig {
   reports: string[];
 }
 
+export interface MavenConfig {
+  modules: "auto";
+  filterPolicy?: MavenFilterPolicy;
+}
+
+export interface GradleConfig {
+  modules: "auto";
+}
+
 export interface Config {
   version: 1;
   baseline: string;
@@ -54,6 +69,8 @@ export interface Config {
   reports: string[];
   watched: string[];
   aggregation?: AggregationConfig;
+  maven?: MavenConfig;
+  gradle?: GradleConfig;
   policy: {
     default: SuitePolicy;
     protectedSuites: ProtectedSuitePolicy[];
@@ -67,6 +84,21 @@ export interface BaselineSuite {
   testIdsHash: string;
   testIdHashes?: string[];
   testIds?: string[];
+}
+
+export type SuiteChangeKind = "added" | "removed" | "changed";
+
+export interface SuiteChange {
+  name: string;
+  kind: SuiteChangeKind;
+  baseline?: { executed: number; skipped: number };
+  current?: { executed: number; skipped: number };
+}
+
+export interface BaselineDiff {
+  suites: SuiteChange[];
+  commandChanged: boolean;
+  reportsChanged: boolean;
 }
 
 export interface Baseline {
@@ -87,6 +119,35 @@ export interface Finding {
   addedTestCount?: number;
   message: string;
   remediation: string;
+}
+
+export interface CheckResult {
+  findings: Finding[];
+  identityDiffs: IdentityDiff[];
+  suites: CanonicalSuite[];
+  notices: string[];
+}
+
+export type DoctorCheckStatus =
+  | "passed"
+  | "warning"
+  | "failed"
+  | "skipped";
+
+export interface DoctorCheck {
+  name:
+    | "configuration"
+    | "execution intent"
+    | "test command"
+    | "reports"
+    | "baseline"
+    | "evaluation";
+  status: DoctorCheckStatus;
+  message: string;
+}
+
+export interface DoctorResult extends CheckResult {
+  checks: DoctorCheck[];
 }
 
 export interface EvaluationResult {

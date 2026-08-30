@@ -24,7 +24,7 @@ See every command and option with `npx exevra --help` (or `npx exevra -h`).
 Install Exevra in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.3.1
+npm install --save-dev @exevra-dev/cli@0.4.0
 ```
 
 For a Node project with a `test` script, initialize without wiring reporter flags by hand:
@@ -49,13 +49,39 @@ For a Maven project using standard Surefire and/or Failsafe report directories:
 npx exevra init --maven
 ```
 
-This runs `mvn verify` and reads standard `TEST-*.xml` reports from either directory. It does not parse custom Maven configuration.
+This runs `mvn verify` and reads standard `TEST-*.xml` reports from either directory in the root and declared child modules. Root-only and multi-module configs record `maven: { modules: auto, filter_policy: warn }`; custom Maven configuration is not parsed.
+
+Maven filter detection applies to that marker. Exevra checks the configured command for these seven flag families: `-Dtest`, `-Dit.test`, `-Dgroups`, `-DexcludedGroups`, `-DskipTests`, `-Dmaven.test.skip`, and `-DskipITs`. The default `maven.filter_policy` is `warn`; it also accepts `off` and `enforce`:
+
+- `warn` reports `TEST_FILTERED`, then cleans configured reports, runs the command, and evaluates fresh reports. A successful `record` still writes a valid baseline subject to its normal `--write` rule and exits successfully.
+- `enforce` reports `TEST_FILTERED` as an error before report cleanup or command execution. `record` does not write a baseline and exits with code `2`.
+- `off` suppresses this finding.
+
+The finding contains flag names only. `=value`, separate flag values, and value-less flags are detected where the command text has a token-like boundary, but selector values and test names are discarded. This is a conservative lexical check, not complete Bash or Maven parsing: shell expansion, aliases, profiles, properties, plugins, and custom report configuration are not resolved.
 
 Run the check locally or in CI:
 
 ```sh
 npx exevra check
 ```
+
+Inspect the configured execution contract without writing configuration or baseline files:
+
+```sh
+npx exevra doctor
+```
+
+`doctor` runs the configured command once through the existing check path, may clean configured reports before collecting fresh ones, and never writes `.exevra.yml` or `.exevra/baseline.json`. It supports `--config` and `--format text|json|github-actions`, reports the fixed stages `configuration`, `execution intent`, `test command`, `reports`, `baseline`, and `evaluation`, returns exit code `0` for a clean or warning result, `1` for a blocking integrity result, and `2` for an invalid invocation or operational failure. Every format stays privacy-safe by omitting raw command text, selector values, test identifiers, and report contents.
+
+Exevra dogfoods this workflow in its own CI: the repository runs `exevra check --format github-actions` against the committed `.exevra.yml` and JUnit baseline before the coverage gate. The self-check runs the test suite once through `test:junit`, verifies the generated report without recursively invoking Exevra, and appends the result to the GitHub job summary.
+
+Review an intended execution-contract change without rewriting the baseline:
+
+```sh
+npx exevra diff
+```
+
+`diff` runs the configured command again, refreshes the configured reports like `check`, and shows a safe baseline delta. It never writes `.exevra.yml` or `.exevra/baseline.json`; accept the change separately with `record --write` after review.
 
 When an intentional change alters the execution contract, review it and update the baseline:
 
@@ -69,7 +95,8 @@ Exevra is JUnit XML based, not tied to one test framework. It runs the configure
 
 Built-in setup:
 
-- **Maven Surefire/Failsafe** — `npx exevra init --maven` detects the standard report directories.
+- **Maven Surefire/Failsafe** — `npx exevra init --maven` detects the standard report directories in the root and declared child modules.
+- **Gradle** — `npx exevra init --gradle` detects `build/test-results/test/TEST-*.xml` in the root and declared projects.
 - **Vitest** — `npx exevra init` detects Vitest and adds its JUnit reporter flags without editing `package.json`.
 
 Other ecosystems work when their JUnit reporter or converter is configured explicitly:
@@ -81,13 +108,12 @@ Other ecosystems work when their JUnit reporter or converter is configured expli
 | Mocha | `mocha-junit-reporter` | Explicit command/config |
 | Cypress | JUnit reporter/plugin | Explicit command/config |
 | pytest | `--junitxml` | Explicit command/config |
-| Gradle, Kotlin, and JUnit | Gradle test XML | Explicit report path |
 | Go test | `go-junit-report` or equivalent | Explicit converter |
 | .NET xUnit/NUnit/MSTest | JUnit-compatible logger | Explicit logger/config |
 | PHPUnit | `--log-junit` | Explicit command/config |
 | RSpec | JUnit formatter | Explicit formatter/config |
 
-This list is illustrative, not a whitelist. A framework that cannot produce JUnit XML needs a reporter or converter before Exevra can evaluate it. The CLI currently runs on POSIX/Bash environments.
+This list is illustrative, not a whitelist. A framework that cannot produce JUnit XML needs a reporter or converter before Exevra can evaluate it. The CLI currently runs on POSIX/Bash environments, and `doctor` uses the same configured POSIX command and report inputs as `check`.
 
 See the [supported frameworks reference](https://exevra.github.io/exevra/reference/supported-frameworks/) for the canonical compatibility contract and setup details.
 
@@ -126,7 +152,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.3.1
+      - uses: Exevra/exevra@v0.4.0
         with:
           config: .exevra.yml
           mode: enforce
@@ -144,7 +170,7 @@ Exevra checks execution integrity, not test quality, assertions, code correctnes
 
 ## Documentation
 
-The [documentation](https://exevra.github.io/exevra/) covers configuration, baseline review, identity privacy, output formats, matrix aggregation, GitHub Actions, and generic CI systems such as Jenkins.
+The [documentation](https://exevra.github.io/exevra/) covers configuration, baseline review, `doctor`, identity privacy, output formats, matrix aggregation, GitHub Actions, and generic CI systems such as Jenkins.
 
 
 ## Contributing and security

@@ -10,7 +10,7 @@ Exevra's CLI runs in any CI system that can check out the repository, run Node 2
 Add Exevra to the target repository's development dependencies. Commit the resulting lockfile so CI installs the reviewed version.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.3.1
+npm install --save-dev @exevra-dev/cli@0.4.0
 ```
 
 The CI job runs the command in `.exevra.yml`. That command must create fresh JUnit XML for every literal entry under `reports`; filename patterns read every matching XML file and require at least one match when the configuration uses patterns only.
@@ -26,7 +26,7 @@ npx exevra check --config .exevra.yml
 
 Commit `.exevra.yml` and the reviewed `.exevra/baseline.json` before adding this step. Use `record` locally when you first create the baseline or intentionally change its execution contract. See [Baselines](./baselines/) for the review workflow.
 
-The default `enforce` mode exits with code 1 for error findings. It exits with code 2 for an invalid invocation or an operational error, such as a missing report. Either code fails a normal CI shell step. See [Output and exit codes](../reference/output-and-exit-codes/) for the complete behavior.
+The default `enforce` mode exits with code 1 for error findings, including `REPORT_MISSING`. It exits with code 2 for an invalid invocation or an operational error, such as malformed XML or unreadable configuration. Either code fails a normal CI shell step. See [Output and exit codes](../reference/output-and-exit-codes/) for the complete behavior.
 
 ## Jenkins Pipeline
 
