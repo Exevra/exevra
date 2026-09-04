@@ -3,19 +3,23 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.4.1
+
+Improves Maven multi-module onboarding by recognizing common test sources, current-build compiled test classes, and direct non-profile `testOutputDirectory` declarations. Build-only modules no longer create false `REPORT_MISSING` findings, while test-bearing modules still require fresh standard Surefire or Failsafe evidence. Existing version-1 configurations and baselines remain compatible.
+
 ## v0.4.0
 
 Adds read-only execution review with `exevra diff` and staged diagnostics with `exevra doctor`. `diff` compares a fresh run with the reviewed baseline without writing configuration or baseline files. `doctor` reports configuration, execution intent, command, reports, baseline, and evaluation stages. Both support text, JSON, and GitHub Actions output.
 
 Adds first-class Gradle onboarding with `exevra init --gradle`, including standard JUnit report discovery for root and declared multi-project builds. Missing or unreadable project reports remain visible as integrity findings.
 
-Extends Maven onboarding to recursively discover declared modules and collect standard Surefire and Failsafe reports per module, including either report family when present. Missing or unreadable module evidence is reported instead of being silently ignored.
+Extends Maven onboarding to recursively discover declared modules and collect standard Surefire and Failsafe reports per test-bearing module, including either report family when present. Missing or unreadable test-bearing module evidence is reported instead of being silently ignored.
 
 Adds Maven test-filter integrity checks for `-Dtest`, `-Dit.test`, `-Dgroups`, `-DexcludedGroups`, `-DskipTests`, `-Dmaven.test.skip`, and `-DskipITs`. The `off`, `warn`, and `enforce` policies make intentional filtering explicit without exposing selector values.
 
 Hardens every output path—including GitHub Action annotations and job summaries—to omit raw commands, selector values, test identifiers, and report contents. The repository now dogfoods Exevra in CI, enforces coverage thresholds, verifies the generated Action bundle, and validates the published package from an empty consumer.
 
-See [Upgrade to v0.4.0](../guides/upgrading/) for the migration checklist from v0.3.1.
+See the [upgrade guide](../guides/upgrading/) for the migration checklist.
 
 ## v0.3.1
 

@@ -120,18 +120,58 @@ test("discovers nested literal modules and excludes the root aggregator", async 
     );
     await writePom(root, "app/component", "<packaging>jar</packaging>");
     await writePom(root, "build-parent", "<packaging>pom</packaging>");
+    await mkdir(join(root, "app", "src", "test", "java"), { recursive: true });
+    await writeFile(
+      join(root, "app", "src", "test", "java", "AppTest.java"),
+      "class AppTest {}",
+    );
 
     assert.deepEqual(
-      (await discoverMavenModules(root)).map(({ path, aggregator }) => ({
+      (await discoverMavenModules(root)).map(({ path, aggregator, hasTestSources }) => ({
         path,
         aggregator,
+        ...(hasTestSources === undefined ? {} : { hasTestSources }),
       })),
       [
-        { path: "app", aggregator: false },
-        { path: "app/component", aggregator: false },
+        { path: "app", aggregator: false, hasTestSources: true },
+        { path: "app/component", aggregator: false, hasTestSources: false },
         { path: "build-parent", aggregator: true },
       ],
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recognizes Maven test sources and compiled test classes", async () => {
+  const root = await temporaryProject();
+  try {
+    await writePom(
+      root,
+      ".",
+      "<packaging>pom</packaging><modules><module>custom-tests</module></modules>",
+    );
+    await writePom(
+      root,
+      "custom-tests",
+      "<packaging>jar</packaging><build><testOutputDirectory>target/custom-test-classes</testOutputDirectory></build>",
+    );
+    await mkdir(join(root, "custom-tests", "target", "test-classes"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(root, "custom-tests", "target", "test-classes", "CustomTest.class"),
+      "compiled",
+    );
+
+    assert.deepEqual(await discoverMavenModules(root), [
+      {
+        path: "custom-tests",
+        pomPath: "custom-tests/pom.xml",
+        aggregator: false,
+        hasTestSources: true,
+      },
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

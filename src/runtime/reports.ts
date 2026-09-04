@@ -114,7 +114,9 @@ export const loadReports = async (
   return aggregateSuites(observations);
 };
 
-type BuildModule = Pick<MavenModule | GradleModule, "path" | "aggregator">;
+type BuildModule = Pick<MavenModule | GradleModule, "path" | "aggregator"> & {
+  hasTestSources?: boolean;
+};
 
 const moduleRootFor = (root: string, module: BuildModule): string =>
   module.path === "." ? root : resolveInRoot(root, module.path);
@@ -184,7 +186,7 @@ const loadBuildReports = async (
         }
       }
     }
-    if (!matched && !unreadableDirectory)
+    if (!matched && !unreadableDirectory && module.hasTestSources !== false)
       missing.push([...expected].sort().join(" or "));
   }
   return {
@@ -209,9 +211,14 @@ export const expandConfiguredReportPaths = async (
 export const loadConfiguredReports = async (
   root: string,
   config: Config,
+  compiledSince?: number,
 ): Promise<ReportCollection> => {
   if (config.maven)
-    return loadBuildReports(root, config, await discoverMavenModules(root));
+    return loadBuildReports(
+      root,
+      config,
+      await discoverMavenModules(root, compiledSince),
+    );
   if (config.gradle)
     return loadBuildReports(root, config, await discoverGradleModules(root));
   const reportPaths = await expandReportPaths(root, config.reports);

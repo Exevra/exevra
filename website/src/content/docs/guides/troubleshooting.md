@@ -26,7 +26,7 @@ Maven filter detection is lexical and conservative. It does not fully parse Bash
 
 ## Missing module reports
 
-Auto-discovery expects standard report locations for every discovered build project. For a Maven module named `api`, look for reports under `api/target/surefire-reports/` or `api/target/failsafe-reports/`. For a Gradle project named `app`, look for `app/build/test-results/test/TEST-*.xml`.
+Auto-discovery expects standard report locations for each discovered test-bearing build project. Build-only Maven modules without Maven test source files or current-build compiled test classes are exempt. A direct non-profile Maven `testOutputDirectory` declaration keeps a module report-bearing. For a Maven module named `api`, look for reports under `api/target/surefire-reports/` or `api/target/failsafe-reports/`. For a Gradle project named `app`, look for `app/build/test-results/test/TEST-*.xml`.
 
 Run the build and inspect the expected locations:
 
@@ -36,7 +36,7 @@ mvn verify                 # Maven
 npx exevra doctor
 ```
 
-If a discovered module produces neither expected report family, Exevra reports `REPORT_MISSING`. Check that the module is declared in the Maven `pom.xml` or Gradle `settings.gradle`/`settings.gradle.kts`, that the test task runs, and that its JUnit reporter is enabled. Auto-discovery does not infer custom report directories; use an explicit report configuration for those projects.
+If a discovered test-bearing module produces neither expected report family, Exevra reports `REPORT_MISSING`. Check that the module is declared in the Maven `pom.xml` or Gradle `settings.gradle`/`settings.gradle.kts`, that the test task runs, and that its JUnit reporter is enabled. Auto-discovery does not infer custom report directories; use an explicit report configuration for those projects.
 
 ## Unreadable module reports
 

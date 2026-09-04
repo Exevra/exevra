@@ -43699,6 +43699,16 @@ const mavenFilterFinding = (command, policy) => {
         remediation: "Remove the flags for a full test run, or explicitly set maven.filter_policy: off after reviewing the intended test scope.",
     };
 };
+const mavenTestSourceExtensions = new Set([
+    ".java",
+    ".kt",
+    ".kts",
+    ".groovy",
+    ".scala",
+    ".sc",
+    ".clj",
+    ".cljs",
+]);
 const relativeModulePath = (root, path) => {
     const value = (0,external_node_path_namespaceObject.relative)(root, path).split(external_node_path_namespaceObject.sep).join("/");
     return value === "" ? "." : value;
@@ -43715,6 +43725,7 @@ const parsePom = (source, pomPath) => {
     let packaging = "";
     let packagingText;
     let moduleText;
+    let testOutputConfigured = false;
     let failure;
     parser.on("doctype", () => {
         failure ??= new paths_RuntimeError(`unable to parse Maven POM ${pomPath}: DOCTYPE declarations are not allowed`);
@@ -43728,6 +43739,8 @@ const parsePom = (source, pomPath) => {
             packagingText = "";
         if (tag.name === "module" && stack.length === 2 && parent === "modules")
             moduleText = "";
+        if (tag.name === "testOutputDirectory" && !stack.includes("profile"))
+            testOutputConfigured = true;
         stack.push(tag.name);
     });
     parser.on("text", (text) => {
@@ -43759,7 +43772,11 @@ const parsePom = (source, pomPath) => {
     }
     if (failure)
         throw failure;
-    return { modules, packaging: packaging || "jar" };
+    return {
+        modules,
+        packaging: packaging || "jar",
+        testOutputConfigured,
+    };
 };
 const readPom = async (path, required, displayPath = path) => {
     try {
@@ -43774,7 +43791,41 @@ const readPom = async (path, required, displayPath = path) => {
         throw new paths_RuntimeError(`unable to read Maven module POM: ${displayPath}`);
     }
 };
-const maven_discoverMavenModules = async (root) => {
+const hasFilesWithExtensions = async (directory, extensions, modifiedSince) => {
+    let entries;
+    try {
+        entries = await (0,promises_.readdir)(directory, { withFileTypes: true });
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return false;
+        throw error;
+    }
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            if (await hasFilesWithExtensions((0,external_node_path_namespaceObject.join)(directory, entry.name), extensions, modifiedSince))
+                return true;
+            continue;
+        }
+        if (!entry.isFile())
+            continue;
+        if (!extensions.has(entry.name.slice(entry.name.lastIndexOf("."))))
+            continue;
+        if (modifiedSince === undefined)
+            return true;
+        if ((await (0,promises_.lstat)((0,external_node_path_namespaceObject.join)(directory, entry.name))).mtimeMs >= modifiedSince)
+            return true;
+    }
+    return false;
+};
+const hasMavenTestSources = async (moduleRoot, testOutputConfigured, compiledSince) => {
+    if (await hasFilesWithExtensions((0,external_node_path_namespaceObject.join)(moduleRoot, "src", "test"), mavenTestSourceExtensions))
+        return true;
+    if (await hasFilesWithExtensions((0,external_node_path_namespaceObject.join)(moduleRoot, "target", "test-classes"), new Set([".class"]), compiledSince))
+        return true;
+    return testOutputConfigured;
+};
+const maven_discoverMavenModules = async (root, compiledSince) => {
     const rootPath = (0,external_node_path_namespaceObject.resolve)(root);
     const rootPom = (0,external_node_path_namespaceObject.join)(rootPath, "pom.xml");
     const rootSource = await readPom(rootPom, false, "pom.xml");
@@ -43795,6 +43846,11 @@ const maven_discoverMavenModules = async (root) => {
                 path: relativeModulePath(rootPath, moduleRoot),
                 pomPath: relativeModulePath(rootPath, modulePom),
                 aggregator,
+                ...(aggregator
+                    ? {}
+                    : {
+                        hasTestSources: await hasMavenTestSources(moduleRoot, parsed.testOutputConfigured, compiledSince),
+                    }),
             });
         for (const declaredModule of parsed.modules) {
             const childRoot = (0,external_node_path_namespaceObject.resolve)(moduleRoot, declaredModule);
@@ -44156,7 +44212,7 @@ const loadBuildReports = async (root, config, modules) => {
                 }
             }
         }
-        if (!matched && !unreadableDirectory)
+        if (!matched && !unreadableDirectory && module.hasTestSources !== false)
             missing.push([...expected].sort().join(" or "));
     }
     return {
@@ -44173,9 +44229,9 @@ const reports_expandConfiguredReportPaths = async (root, config) => {
         return moduleReportPaths(root, config, await gradle_discoverGradleModules(root));
     return expandReportPaths(root, config.reports);
 };
-const reports_loadConfiguredReports = async (root, config) => {
+const reports_loadConfiguredReports = async (root, config, compiledSince) => {
     if (config.maven)
-        return loadBuildReports(root, config, await maven_discoverMavenModules(root));
+        return loadBuildReports(root, config, await maven_discoverMavenModules(root, compiledSince));
     if (config.gradle)
         return loadBuildReports(root, config, await gradle_discoverGradleModules(root));
     const reportPaths = await expandReportPaths(root, config.reports);
@@ -44268,6 +44324,7 @@ const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutp
         ? await load_readBaselineIfPresent(loaded.root, loaded.baselinePath)
         : undefined;
     await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config));
+    const commandStartedAt = Date.now();
     const command = await command_runConfiguredCommand(loaded.root, loaded.config.command, suppressCommandOutput);
     if (command.finding)
         return {
@@ -44278,7 +44335,7 @@ const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutp
             config: loaded.config,
             baseline: undefined,
         };
-    const reports = await reports_loadConfiguredReports(loaded.root, loaded.config);
+    const reports = await reports_loadConfiguredReports(loaded.root, loaded.config, commandStartedAt);
     const reportFindings = findings_buildReportFindings(reports);
     if (reportFindings.length > 0)
         return {
@@ -44589,6 +44646,7 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
         }
     }
     await cleanReports(existingReportPaths);
+    const commandStartedAt = Date.now();
     const command = await runConfiguredCommand(loaded.root, loaded.config.command);
     if (command.finding)
         return {
@@ -44596,7 +44654,7 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
             suites: [],
             findings: [...findings, command.finding],
         };
-    const reports = await loadConfiguredReports(loaded.root, loaded.config);
+    const reports = await loadConfiguredReports(loaded.root, loaded.config, commandStartedAt);
     const reportFindings = buildReportFindings(reports);
     if (reportFindings.length > 0)
         return {
