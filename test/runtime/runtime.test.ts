@@ -374,6 +374,13 @@ test("loadConfiguredReports reports a Maven module with neither report family", 
     "<packaging>pom</packaging><modules><module>service</module></modules>",
   );
   await writeMavenPom(root, "service", "<packaging>jar</packaging>");
+  await mkdir(join(root, "service", "src", "test", "java"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(root, "service", "src", "test", "java", "ServiceTest.java"),
+    "class ServiceTest {}",
+  );
 
   const result = await loadConfiguredReports(root, mavenConfig());
 
@@ -382,6 +389,78 @@ test("loadConfiguredReports reports a Maven module with neither report family", 
   assert.deepEqual(result.missingReports, [
     "service/target/failsafe-reports/TEST-*.xml or service/target/surefire-reports/TEST-*.xml",
   ]);
+});
+
+test("loadConfiguredReports ignores Maven modules without test sources", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>build-parent</module></modules>",
+  );
+  await writeMavenPom(root, "build-parent", "<packaging>jar</packaging>");
+
+  const result = await loadConfiguredReports(root, mavenConfig());
+
+  assert.deepEqual(result.suites, []);
+  assert.deepEqual(result.missingReports, []);
+  assert.deepEqual(result.unreadableReports, []);
+});
+
+test("loadConfiguredReports requires reports for compiled custom Maven test sources", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>service</module></modules>",
+  );
+  await writeMavenPom(
+    root,
+    "service",
+    "<packaging>jar</packaging><build><testOutputDirectory>target/custom-test-classes</testOutputDirectory></build>",
+  );
+
+  const result = await loadConfiguredReports(root, mavenConfig());
+
+  assert.deepEqual(result.missingReports, [
+    "service/target/failsafe-reports/TEST-*.xml or service/target/surefire-reports/TEST-*.xml",
+  ]);
+});
+
+test("loadConfiguredReports ignores stale compiled Maven test classes", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeMavenPom(
+    root,
+    ".",
+    "<packaging>pom</packaging><modules><module>service</module></modules>",
+  );
+  await writeMavenPom(root, "service", "<packaging>jar</packaging>");
+  const classDirectory = join(
+    root,
+    "service",
+    "target",
+    "test-classes",
+    "com",
+    "example",
+  );
+  await mkdir(classDirectory, {
+    recursive: true,
+  });
+  await writeFile(
+    join(classDirectory, "OldTest.class"),
+    "stale",
+  );
+
+  const result = await loadConfiguredReports(
+    root,
+    mavenConfig(),
+    Date.now() + 1,
+  );
+
+  assert.deepEqual(result.missingReports, []);
 });
 
 test("loadConfiguredReports reports unreadable Maven report files", async (t) => {

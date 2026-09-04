@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SaxesParser } from "saxes";
 import type { Finding, MavenFilterPolicy } from "../core/model.js";
@@ -32,12 +32,25 @@ export interface MavenModule {
   path: string;
   pomPath: string;
   aggregator: boolean;
+  hasTestSources?: boolean;
 }
 
 interface ParsedPom {
   modules: string[];
   packaging: string;
+  testOutputConfigured: boolean;
 }
+
+const mavenTestSourceExtensions = new Set([
+  ".java",
+  ".kt",
+  ".kts",
+  ".groovy",
+  ".scala",
+  ".sc",
+  ".clj",
+  ".cljs",
+]);
 
 const relativeModulePath = (root: string, path: string): string => {
   const value = relative(root, path).split(sep).join("/");
@@ -56,6 +69,7 @@ const parsePom = (source: string, pomPath: string): ParsedPom => {
   let packaging = "";
   let packagingText: string | undefined;
   let moduleText: string | undefined;
+  let testOutputConfigured = false;
   let failure: RuntimeError | undefined;
 
   parser.on("doctype", () => {
@@ -74,6 +88,8 @@ const parsePom = (source: string, pomPath: string): ParsedPom => {
       packagingText = "";
     if (tag.name === "module" && stack.length === 2 && parent === "modules")
       moduleText = "";
+    if (tag.name === "testOutputDirectory" && !stack.includes("profile"))
+      testOutputConfigured = true;
     stack.push(tag.name);
   });
   parser.on("text", (text) => {
@@ -109,7 +125,11 @@ const parsePom = (source: string, pomPath: string): ParsedPom => {
     );
   }
   if (failure) throw failure;
-  return { modules, packaging: packaging || "jar" };
+  return {
+    modules,
+    packaging: packaging || "jar",
+    testOutputConfigured,
+  };
 };
 
 const readPom = async (
@@ -128,8 +148,66 @@ const readPom = async (
   }
 };
 
+const hasFilesWithExtensions = async (
+  directory: string,
+  extensions: ReadonlySet<string>,
+  modifiedSince?: number,
+): Promise<boolean> => {
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (
+        await hasFilesWithExtensions(
+          join(directory, entry.name),
+          extensions,
+          modifiedSince,
+        )
+      )
+        return true;
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (!extensions.has(entry.name.slice(entry.name.lastIndexOf("."))))
+      continue;
+    if (modifiedSince === undefined) return true;
+    if ((await lstat(join(directory, entry.name))).mtimeMs >= modifiedSince)
+      return true;
+  }
+  return false;
+};
+
+const hasMavenTestSources = async (
+  moduleRoot: string,
+  testOutputConfigured: boolean,
+  compiledSince?: number,
+): Promise<boolean> => {
+  if (
+    await hasFilesWithExtensions(
+      join(moduleRoot, "src", "test"),
+      mavenTestSourceExtensions,
+    )
+  )
+    return true;
+  if (
+    await hasFilesWithExtensions(
+      join(moduleRoot, "target", "test-classes"),
+      new Set([".class"]),
+      compiledSince,
+    )
+  )
+    return true;
+  return testOutputConfigured;
+};
+
 export const discoverMavenModules = async (
   root: string,
+  compiledSince?: number,
 ): Promise<MavenModule[]> => {
   const rootPath = resolve(root);
   const rootPom = join(rootPath, "pom.xml");
@@ -158,6 +236,15 @@ export const discoverMavenModules = async (
         path: relativeModulePath(rootPath, moduleRoot),
         pomPath: relativeModulePath(rootPath, modulePom),
         aggregator,
+        ...(aggregator
+          ? {}
+          : {
+              hasTestSources: await hasMavenTestSources(
+                moduleRoot,
+                parsed.testOutputConfigured,
+                compiledSince,
+              ),
+            }),
       });
 
     for (const declaredModule of parsed.modules) {

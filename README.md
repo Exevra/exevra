@@ -24,7 +24,7 @@ See every command and option with `npx exevra --help` (or `npx exevra -h`).
 Install Exevra in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.4.0
+npm install --save-dev @exevra-dev/cli@0.4.1
 ```
 
 For a Node project with a `test` script, initialize without wiring reporter flags by hand:
@@ -49,7 +49,7 @@ For a Maven project using standard Surefire and/or Failsafe report directories:
 npx exevra init --maven
 ```
 
-This runs `mvn verify` and reads standard `TEST-*.xml` reports from either directory in the root and declared child modules. Root-only and multi-module configs record `maven: { modules: auto, filter_policy: warn }`; custom Maven configuration is not parsed.
+This runs `mvn verify` and reads standard `TEST-*.xml` reports from either directory in the root and declared child modules. Modules without Maven test source files or current-build compiled test classes are not required to produce a report; a direct `testOutputDirectory` declaration keeps a module report-bearing. Root-only and multi-module configs record `maven: { modules: auto, filter_policy: warn }`; custom report directories are not parsed.
 
 Maven filter detection applies to that marker. Exevra checks the configured command for these seven flag families: `-Dtest`, `-Dit.test`, `-Dgroups`, `-DexcludedGroups`, `-DskipTests`, `-Dmaven.test.skip`, and `-DskipITs`. The default `maven.filter_policy` is `warn`; it also accepts `off` and `enforce`:
 
@@ -152,7 +152,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.4.0
+      - uses: Exevra/exevra@v0.4.1
         with:
           config: .exevra.yml
           mode: enforce

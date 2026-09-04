@@ -81,6 +81,7 @@ export const record = async ({
     }
   }
   await cleanReports(existingReportPaths);
+  const commandStartedAt = Date.now();
   const command = await runConfiguredCommand(
     loaded.root,
     loaded.config.command,
@@ -91,7 +92,11 @@ export const record = async ({
       suites: [],
       findings: [...findings, command.finding],
     };
-  const reports = await loadConfiguredReports(loaded.root, loaded.config);
+  const reports = await loadConfiguredReports(
+    loaded.root,
+    loaded.config,
+    commandStartedAt,
+  );
   const reportFindings = buildReportFindings(reports);
   if (reportFindings.length > 0)
     return {
