@@ -46,7 +46,7 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
-    "@types/node": "^22.20.1",
+    "@types/node": "^26.4.0",
     "@vercel/ncc": "^0.45.0",
     "typescript": "^5.8.3"
   }
