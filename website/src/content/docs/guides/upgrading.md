@@ -1,22 +1,22 @@
 ---
-title: Upgrade to v0.4.1
-description: Move from Exevra v0.4.0 to the v0.4.1 command and configuration surface.
+title: Upgrade to v0.4.2
+description: Move from Exevra v0.4.1 to the v0.4.2 command and configuration surface.
 ---
 
-Exevra v0.4.1 is compatible with existing version-1 `.exevra.yml` files and schema-version-1 baselines. No migration is required. Maven auto-discovery now exempts modules without test sources or current-build compiled test classes from missing-report findings.
+Exevra v0.4.2 is a patch release with no behavior changes. It remains compatible with existing version-1 `.exevra.yml` files and schema-version-1 baselines; no migration is required.
 
 ## Update the CLI and Action
 
 Update the development dependency and lockfile:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.4.1
+npm install --save-dev @exevra-dev/cli@0.4.2
 ```
 
 If a workflow uses the GitHub Action, update its versioned reference:
 
 ```yaml
-- uses: Exevra/exevra@v0.4.1
+- uses: Exevra/exevra@v0.4.2
 ```
 
 Keep `uses: ./` only for testing a checked-out copy of Exevra.

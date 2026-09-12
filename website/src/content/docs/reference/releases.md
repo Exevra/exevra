@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.4.2
+
+Patch release with no behavior changes. Updates the published CLI and GitHub Action version references while preserving compatibility with existing version-1 configurations and schema-version-1 baselines.
+
 ## v0.4.1
 
 Improves Maven multi-module onboarding by recognizing common test sources, current-build compiled test classes, and direct non-profile `testOutputDirectory` declarations. Build-only modules no longer create false `REPORT_MISSING` findings, while test-bearing modules still require fresh standard Surefire or Failsafe evidence. Existing version-1 configurations and baselines remain compatible.
