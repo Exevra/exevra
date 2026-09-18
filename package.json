@@ -43,10 +43,10 @@
   "dependencies": {
     "@actions/core": "^2.0.3",
     "saxes": "^6.0.0",
-    "yaml": "^2.8.1"
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.5.1",
     "@vercel/ncc": "^0.45.0",
     "typescript": "^5.8.3"
   }
