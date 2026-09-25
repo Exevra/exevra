@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.4.3
+
+Updates the YAML runtime dependency, Node.js type definitions, Astro and Starlight documentation dependencies, and CodeQL Action. Refreshes the bundled GitHub Action and preserves compatibility with existing version-1 configurations and schema-version-1 baselines.
+
 ## v0.4.2
 
 Patch release with no behavior changes. Updates the published CLI and GitHub Action version references while preserving compatibility with existing version-1 configurations and schema-version-1 baselines.
