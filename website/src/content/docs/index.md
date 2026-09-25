@@ -17,6 +17,6 @@ Exevra runs one configured test command, requires fresh JUnit XML reports, and c
 
 By default, identity diagnosis keeps raw test names out of the baseline and ordinary output. It records opaque fingerprints and reports safe missing and added counts instead. Teams can explicitly opt in to readable names for a protected suite when that is appropriate for their repository.
 
-Exevra v0.4.2 is a patch release with no behavior changes. It keeps the v0.4.1 Maven multi-module improvements and the v0.4.0 Gradle, Maven filter, `diff`, `doctor`, privacy-safe summary, and matrix aggregation features available. Exevra does not assess test quality, assertions, code correctness, or whether a change is safe. It has no hosted service, accounts, GitHub API calls, pull-request comments, or remote artifact lookup.
+Exevra v0.4.3 updates runtime, build, documentation, and CI dependencies and refreshes the bundled GitHub Action. It remains compatible with existing version-1 configurations and schema-version-1 baselines. Exevra does not assess test quality, assertions, code correctness, or whether a change is safe. It has no hosted service, accounts, GitHub API calls, pull-request comments, or remote artifact lookup.
 
 Start with the [quick start](./getting-started/) to create and commit a baseline.
