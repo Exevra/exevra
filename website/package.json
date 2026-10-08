@@ -14,5 +14,10 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "postcss-nested": {
+      "postcss-selector-parser": "7.1.6"
+    }
   }
 }
