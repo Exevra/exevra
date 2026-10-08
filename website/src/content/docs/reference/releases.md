@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.4.4
+
+Updates the bundled Undici dependency to 6.29.0, CodeQL Action to 4.38.1, and the documentation dependencies devalue, source-map-js, sharp, smol-toml, and Undici. Refreshes the generated GitHub Action bundle. Existing version-1 configurations and schema-version-1 baselines remain compatible; no migration is required.
+
 ## v0.4.3
 
 Updates the YAML runtime dependency, Node.js type definitions, Astro and Starlight documentation dependencies, and CodeQL Action. Refreshes the bundled GitHub Action and preserves compatibility with existing version-1 configurations and schema-version-1 baselines.
