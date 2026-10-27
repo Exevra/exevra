@@ -453,7 +453,7 @@ test("release workflows and documentation pin current v7 GitHub Actions", async 
     );
     assert.match(
       content,
-      /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/,
+      /actions\/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1/,
     );
   }
 });
