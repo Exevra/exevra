@@ -25,3 +25,7 @@ Add or update focused tests for behavior changes. Do not treat a local test run 
 Explain the execution contract affected, include the checks you ran, and call out any configuration or baseline change. Baseline updates are normal reviewed changes, not an automatic bypass.
 
 By contributing, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Preparing a release
+
+Run `npm version patch --no-git-tag-version` (or use `minor`, `major`, or an explicit stable version) to update package metadata and the versioned Action examples. Review the changes and add accurate release notes to the documentation before opening a pull request. Merging the version change into `main` runs the publish workflow; after its checks and npm publication succeed, it creates the matching `v` tag and GitHub release with generated notes. Dependency-only merges do not create releases.

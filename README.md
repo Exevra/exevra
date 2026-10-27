@@ -24,7 +24,7 @@ See every command and option with `npx exevra --help` (or `npx exevra -h`).
 Install Exevra in the repository you want to protect:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.4.4
+npm install --save-dev @exevra-dev/cli@latest
 ```
 
 For a Node project with a `test` script, initialize without wiring reporter flags by hand:

@@ -67,3 +67,34 @@ jobs:
           fi
       - if: steps.package.outputs.published != 'true'
         run: npm publish
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create release for a version change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_SHA: ${{ github.event.before }}
+        run: |
+          old_version="$(git show "${PREVIOUS_SHA}:package.json" | node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$old_version" = "$version" ]; then
+            echo "Package version unchanged; no release needed."
+            exit 0
+          fi
+          tag="v${version}"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            test "$(git rev-list -n 1 "$tag")" = "$GITHUB_SHA" || { echo "Existing tag points to another commit."; exit 1; }
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --generate-notes
+          fi
