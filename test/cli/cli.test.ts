@@ -349,7 +349,7 @@ test("compiled CLI initializes Maven modules and records child suites", async (t
   assert.deepEqual(baseline.suites.map((suite) => suite.name), ["e2e", "service"]);
 });
 
-test("compiled CLI initializes Gradle projects and records child suites", async (t) => {
+test("compiled CLI initializes Gradle projects and records root and child suites", async (t) => {
   const root = await project();
   t.after(() => rm(root, { recursive: true, force: true }));
   await rm(join(root, ".exevra.yml"), { force: true });
@@ -363,6 +363,8 @@ test("compiled CLI initializes Gradle projects and records child suites", async 
     join(root, "tools", "fake-gradle-command.mjs"),
     "import { mkdir, writeFile } from 'node:fs/promises';\n" +
       "await mkdir('app/build/test-results/test', { recursive: true });\n" +
+      "await mkdir('build/test-results/test', { recursive: true });\n" +
+      "await writeFile('build/test-results/test/TEST-root.xml', '<testsuite name=\"root\"><testcase classname=\"root\" name=\"test-1\"/></testsuite>');\n" +
       "await writeFile('app/build/test-results/test/TEST-app.xml', '<testsuite name=\"app\"><testcase classname=\"app\" name=\"test-1\"/></testsuite>');\n",
   );
   const bin = join(root, "bin");
@@ -388,7 +390,7 @@ test("compiled CLI initializes Gradle projects and records child suites", async 
   const baseline = JSON.parse(
     await readFile(join(root, ".exevra", "baseline.json"), "utf8"),
   ) as { suites: Array<{ name: string }> };
-  assert.deepEqual(baseline.suites.map((suite) => suite.name), ["app"]);
+  assert.deepEqual(baseline.suites.map((suite) => suite.name), ["app", "root"]);
 });
 
 test("compiled CLI initializes a Node project without init flags", async (t) => {
@@ -1616,4 +1618,20 @@ test("compiled CLI forwards a valid base ref to runtime comparison", async (t) =
   assert.equal(result.code, 0);
   assert.match(result.stdout, /^EXEVRA PASSED WITH WARNINGS/m);
   assert.doesNotMatch(result.stdout, /Changed-file comparison is unavailable/);
+});
+
+test("CLI escapes report-controlled control characters in operational errors", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const reportDir = join(root, "shards/one/reports");
+  await mkdir(reportDir, { recursive: true });
+  await writeFile(join(reportDir, "TEST-\n::warning::injected.xml"), "<testsuite");
+  const configPath = join(root, ".exevra.yml");
+  await writeFile(configPath, JSON.stringify({ version: 1, baseline: ".exevra/baseline.json", command: "exit 0", reports: ["unused.xml"], aggregation: { root: "shards", shards: ["one"], reports: ["reports/TEST-\n::warning::injected.xml"] }, policy: { default: { min_executed: 1, max_drop_percent: 0 } } }));
+  await assert.rejects(execute(process.execPath, [cli, "aggregate", "--config", configPath], { cwd: root }), (error: unknown) => {
+    const stderr = (error as { stderr: string }).stderr;
+    assert.doesNotMatch(stderr, /(?:^|\n)::warning::/);
+    assert.match(stderr, /\\n::warning::injected/);
+    return true;
+  });
 });

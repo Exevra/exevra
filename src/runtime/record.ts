@@ -80,7 +80,7 @@ export const record = async ({
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  await cleanReports(existingReportPaths);
+  await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath]);
   const commandStartedAt = Date.now();
   const command = await runConfiguredCommand(
     loaded.root,

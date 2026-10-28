@@ -1594,3 +1594,38 @@ test("command runner uses Bash pipefail and Git rejects unsafe or unavailable re
     RuntimeError,
   );
 });
+
+test("report cleanup preserves configuration and baseline even with overlapping patterns", async (t) => {
+  for (const [name, invoke] of [
+    ["check", (configPath: string) => check({ configPath })],
+    ["diff", (configPath: string) => diff({ configPath })],
+    ["record", (configPath: string) => record({ configPath, write: true })],
+    ["doctor", (configPath: string) => doctor({ configPath })],
+  ] as const) {
+    const root = await project();
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const configPath = join(root, ".exevra.yml");
+    const baselinePath = join(root, ".exevra/baseline.json");
+    const reportPath = join(root, "first.xml");
+    const baseline = await readFile(baselinePath, "utf8");
+    const source = JSON.stringify({ version: 1, baseline: ".exevra/baseline.json", command: "exit 0", reports: ["first.xml", ".exevra/*.json"], policy: { default: { min_executed: 1, max_drop_percent: 0 } } });
+    await writeFile(configPath, source);
+    await writeFile(reportPath, "untouched");
+    await assert.rejects(invoke(configPath), /report.*(?:configuration|baseline)|(?:configuration|baseline).*report/i, name);
+    assert.equal(await readFile(configPath, "utf8"), source);
+    assert.equal(await readFile(baselinePath, "utf8"), baseline);
+    assert.equal(await readFile(reportPath, "utf8"), "untouched");
+  }
+});
+
+test("report cleanup protects configuration reached through a symlinked parent", async (t) => {
+  const root = await project();
+  const alias = `${root}-alias`;
+  t.after(async () => { await rm(alias, { force: true }); await rm(root, { recursive: true, force: true }); });
+  await symlink(root, alias);
+  const configPath = join(root, "config.yml");
+  const source = JSON.stringify({ version: 1, baseline: ".exevra/baseline.json", command: "exit 0", reports: ["config.yml"], policy: { default: { min_executed: 1, max_drop_percent: 0 } } });
+  await writeFile(configPath, source);
+  await assert.rejects(check({ configPath: join(alias, "config.yml") }), /report.*configuration/i);
+  assert.equal(await readFile(configPath, "utf8"), source);
+});

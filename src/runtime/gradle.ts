@@ -115,7 +115,7 @@ export const discoverGradleModules = async (
 
   const source = withoutComments(settings.source);
   const directories = customProjectDirectories(source);
-  const visited = new Set<string>();
+  const visited = new Set<string>([rootPath]);
   const modules: GradleModule[] = [];
   for (const projectPath of includedProjects(source)) {
     const configuredPath = directories.get(projectPath) ?? modulePathFor(projectPath);
@@ -131,5 +131,6 @@ export const discoverGradleModules = async (
   }
   if (modules.length === 0)
     return [{ path: ".", projectPath: ":", aggregator: false }];
+  modules.push({ path: ".", projectPath: ":", aggregator: false });
   return modules.sort((left, right) => left.path.localeCompare(right.path));
 };

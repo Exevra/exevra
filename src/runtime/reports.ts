@@ -172,17 +172,20 @@ const loadBuildReports = async (
           unreadable.push(expectedPath);
         },
       )) {
-        matched = true;
-        reportPaths.push(path);
         try {
           observations.push(
             ...parseJunit(await readFile(path, "utf8"), relative(root, path)),
           );
+          matched = true;
+          reportPaths.push(path);
         } catch (error) {
           const code = (error as NodeJS.ErrnoException).code;
-          if (code === "EACCES" || code === "EPERM")
+          if (code === "ENOENT") continue;
+          if (code === "EACCES" || code === "EPERM") {
+            matched = true;
+            reportPaths.push(path);
             unreadable.push(relativeRootPath(root, path));
-          else throw error;
+          } else throw error;
         }
       }
     }

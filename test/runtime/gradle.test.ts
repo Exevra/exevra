@@ -65,6 +65,7 @@ test("discovers included Gradle projects and custom project directories", async 
         }),
       ),
       [
+        { path: ".", projectPath: ":", aggregator: false },
         { path: "app", projectPath: ":app", aggregator: false },
         {
           path: "components/api",
@@ -94,6 +95,7 @@ test("discovers Kotlin DSL includes and falls back to the root project", async (
         projectPath,
       })),
       [
+        { path: ".", projectPath: ":" },
         { path: "app", projectPath: ":app" },
         { path: "services/api", projectPath: ":services:api" },
       ],
@@ -149,6 +151,7 @@ test("collects standard Gradle reports for every included project", async () => 
     await writeSettings(root, "include(':app', ':services:api')\n");
     await writeDirectory(root, "app");
     await writeDirectory(root, "services/api");
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
     await writeReport(root, "app/build/test-results/test/TEST-app.xml", "app");
     await writeReport(
       root,
@@ -160,11 +163,12 @@ test("collects standard Gradle reports for every included project", async () => 
 
     assert.deepEqual(result.missingReports, []);
     assert.deepEqual(result.unreadableReports, []);
-    assert.deepEqual(result.suites.map(({ name }) => name), ["api", "app"]);
+    assert.deepEqual(result.suites.map(({ name }) => name), ["api", "app", "root"]);
     assert.deepEqual(
       result.reportPaths.map((path) => relative(root, path)),
       [
         "app/build/test-results/test/TEST-app.xml",
+        "build/test-results/test/TEST-root.xml",
         "services/api/build/test-results/test/TEST-api.xml",
       ],
     );
@@ -179,11 +183,12 @@ test("makes a missing Gradle project report visible", async () => {
     await writeSettings(root, "include(':app', ':services:api')\n");
     await writeDirectory(root, "app");
     await writeDirectory(root, "services/api");
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
     await writeReport(root, "app/build/test-results/test/TEST-app.xml", "app");
 
     const result = await loadConfiguredReports(root, gradleConfig());
 
-    assert.deepEqual(result.suites.map(({ name }) => name), ["app"]);
+    assert.deepEqual(result.suites.map(({ name }) => name), ["app", "root"]);
     assert.deepEqual(result.missingReports, [
       "services/api/build/test-results/test/TEST-*.xml",
     ]);
@@ -198,6 +203,7 @@ test("makes an unreadable Gradle report directory visible", async () => {
   try {
     await writeSettings(root, "include(':app')\n");
     await writeDirectory(root, "app");
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
     await mkdir(reports, { recursive: true });
     await chmod(reports, 0o000);
 
@@ -209,6 +215,51 @@ test("makes an unreadable Gradle report directory visible", async () => {
     ]);
   } finally {
     await chmod(reports, 0o700).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("includes root Gradle reports and requires them when root has tests", async () => {
+  const root = await temporaryProject();
+  try {
+    await writeSettings(root, "include(':app')\n");
+    await writeDirectory(root, "app");
+    await writeDirectory(root, "src/test/java");
+    await writeReport(root, "app/build/test-results/test/TEST-app.xml", "app");
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
+    const complete = await loadConfiguredReports(root, gradleConfig());
+    assert.deepEqual(complete.suites.map(({ name }) => name), ["app", "root"]);
+    await rm(join(root, "build/test-results/test/TEST-root.xml"));
+    const missing = await loadConfiguredReports(root, gradleConfig());
+    assert.ok(missing.missingReports.some((path) => path.startsWith("build/test-results/test/")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("requires root reports even when root tests use custom source directories", async () => {
+  const root = await temporaryProject();
+  try {
+    await writeSettings(root, "include(':app')\n");
+    await writeDirectory(root, "app");
+    await writeFile(join(root, "build.gradle"), "sourceSets.test.java.srcDirs = ['custom-tests']\n");
+    await writeReport(root, "app/build/test-results/test/TEST-app.xml", "app");
+    const result = await loadConfiguredReports(root, gradleConfig());
+    assert.ok(result.missingReports.includes("build/test-results/test/TEST-*.xml"));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("retains unreadable Gradle report paths in diagnostics", async () => {
+  const root = await temporaryProject();
+  const report = join(root, "build/test-results/test/TEST-root.xml");
+  try {
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
+    await chmod(report, 0o000);
+    const result = await loadConfiguredReports(root, gradleConfig());
+    assert.deepEqual(result.unreadableReports, ["build/test-results/test/TEST-root.xml"]);
+    assert.deepEqual(result.reportPaths, [report]);
+  } finally {
+    await chmod(report, 0o600).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
 });

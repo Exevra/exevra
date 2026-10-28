@@ -39713,7 +39713,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   S5: () => (/* reexport */ renderText)
 });
 
-// UNUSED EXPORTS: CoreValidationError, JunitParseError, compareBaseline, multisetDifference, renderGitHubActions, renderJson, resolveSuitePolicy, serializeBaseline, testIdHash, testIdHashes, testIdsHash
+// UNUSED EXPORTS: CoreValidationError, JunitParseError, compareBaseline, escapeTextControls, multisetDifference, renderGitHubActions, renderJson, resolveSuitePolicy, serializeBaseline, testIdHash, testIdHashes, testIdsHash
 
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
 var dist = __nccwpck_require__(8815);
@@ -40249,13 +40249,19 @@ const evaluate = ({ config, baseline, currentSuites, changedPaths = [], }) => {
             : 0;
         if (drop > rule.maxDropPercent)
             findings.push(finding("SUITE_DROP_EXCEEDED", `Suite ${name} executed ${baseExecuted} -> ${headExecuted}, a ${drop}% drop.`, { suite: name, baseExecuted, headExecuted }));
+        const hashDiff = currentSuite && baselineSuite?.testIdHashes && rule.identity !== "off"
+            ? multisetDifference(baselineSuite.testIdHashes, junit_testIdHashes(currentSuite.tests))
+            : undefined;
+        const ambiguousLegacy = currentSuite && baselineSuite && !baselineSuite.testIdHashes &&
+            currentSuite.tests.some(({ id }) => id.includes("\n"));
         if (currentSuite &&
             baselineSuite &&
             rule.identity !== "off" &&
-            testIdsHash(currentSuite.tests) !== baselineSuite.testIdsHash) {
-            const hashDiff = baselineSuite.testIdHashes
-                ? multisetDifference(baselineSuite.testIdHashes, junit_testIdHashes(currentSuite.tests))
-                : undefined;
+            (hashDiff
+                ? hashDiff.missing.length > 0 || hashDiff.added.length > 0
+                : testIdsHash(currentSuite.tests) !== baselineSuite.testIdsHash ||
+                    currentSuite.tests.length !== baselineSuite.executed + baselineSuite.skipped ||
+                    ambiguousLegacy)) {
             const includeNames = rule.identityDetails === "names" && baselineSuite.testIds !== undefined;
             if (includeNames) {
                 const names = multisetDifference(baselineSuite.testIds, currentSuite.tests.map((test) => test.id));
@@ -40265,7 +40271,9 @@ const evaluate = ({ config, baseline, currentSuites, changedPaths = [], }) => {
                     addedTestIds: names.added,
                 });
             }
-            findings.push(finding("TEST_IDENTITIES_CHANGED", `Test identities changed in suite ${name}.`, {
+            findings.push(finding("TEST_IDENTITIES_CHANGED", ambiguousLegacy
+                ? `Test identities in suite ${name} cannot be verified with the legacy baseline.`
+                : `Test identities changed in suite ${name}.`, {
                 severity: rule.identity === "enforce" ? "error" : "warning",
                 suite: name,
                 baseExecuted,
@@ -40369,10 +40377,19 @@ const doctorLines = (checks) => {
         ...checks.map((check) => `${check.name}: ${check.status} - ${doctorMessage(check)}`),
     ];
 };
+const escapeTextControls = (value) => value.replace(/[\u0000-\u001f\u007f-\u009f]/g, (character) => {
+    if (character === "\n")
+        return "\\n";
+    if (character === "\r")
+        return "\\r";
+    if (character === "\t")
+        return "\\t";
+    return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
+});
 const renderText = (input, options = {}) => {
     const lines = [outcomeText(input)];
     if (input.checks !== undefined)
-        return `${[...lines, ...doctorLines(input.checks)].join("\n")}\n`;
+        return `${[...lines, ...doctorLines(input.checks)].map(escapeTextControls).join("\n")}\n`;
     for (const finding of orderedFindings(input.findings))
         lines.push(findingLine(finding));
     for (const line of diffLines(input.changes))
@@ -40381,7 +40398,7 @@ const renderText = (input, options = {}) => {
         lines.push(detail);
     for (const notice of [...(input.notices ?? [])].sort(compare))
         lines.push(`NOTICE: ${notice}`);
-    return `${lines.join("\n")}\n`;
+    return `${lines.map(escapeTextControls).join("\n")}\n`;
 };
 const renderJson = (input) => JSON.stringify(input.checks === undefined
     ? {
@@ -40470,10 +40487,8 @@ const configRootFor = async (configPath) => {
     }
     if (configEntry.isSymbolicLink())
         throw new paths_RuntimeError(`configuration file must not be a symlink: ${absoluteConfigPath}`);
-    return {
-        configPath: absoluteConfigPath,
-        root: await (0,promises_.realpath)((0,external_node_path_namespaceObject.dirname)(absoluteConfigPath)),
-    };
+    const root = await (0,promises_.realpath)((0,external_node_path_namespaceObject.dirname)(absoluteConfigPath));
+    return { configPath: (0,external_node_path_namespaceObject.join)(root, (0,external_node_path_namespaceObject.basename)(absoluteConfigPath)), root };
 };
 const paths_assertSafeInRootPath = async (root, path, createParents = false) => {
     const relation = (0,external_node_path_namespaceObject.relative)(root, path);
@@ -40535,7 +40550,9 @@ const commandFinding = (exitCode) => ({
     message: `Configured test command failed with exit code ${exitCode ?? "unknown"}.`,
     remediation: "Fix the test command failure before evaluating test execution.",
 });
-const command_cleanReports = async (reportPaths) => {
+const command_cleanReports = async (reportPaths, protectedPaths = []) => {
+    if (reportPaths.some((path) => protectedPaths.includes(path)))
+        throw new paths_RuntimeError("configured report overlaps configuration or baseline");
     for (const path of reportPaths) {
         try {
             const entry = await (0,promises_.lstat)(path);
@@ -40978,7 +40995,7 @@ const gradle_discoverGradleModules = async (root) => {
         return [{ path: ".", projectPath: ":", aggregator: false }];
     const source = withoutComments(settings.source);
     const directories = customProjectDirectories(source);
-    const visited = new Set();
+    const visited = new Set([rootPath]);
     const modules = [];
     for (const projectPath of includedProjects(source)) {
         const configuredPath = directories.get(projectPath) ?? modulePathFor(projectPath);
@@ -40995,6 +41012,7 @@ const gradle_discoverGradleModules = async (root) => {
     }
     if (modules.length === 0)
         return [{ path: ".", projectPath: ":", aggregator: false }];
+    modules.push({ path: ".", projectPath: ":", aggregator: false });
     return modules.sort((left, right) => left.path.localeCompare(right.path));
 };
 
@@ -41099,15 +41117,20 @@ const loadBuildReports = async (root, config, modules) => {
                 unreadableDirectory = true;
                 unreadable.push(expectedPath);
             })) {
-                matched = true;
-                reportPaths.push(path);
                 try {
                     observations.push(...(0,core/* parseJunit */.kJ)(await (0,promises_.readFile)(path, "utf8"), (0,external_node_path_namespaceObject.relative)(root, path)));
+                    matched = true;
+                    reportPaths.push(path);
                 }
                 catch (error) {
                     const code = error.code;
-                    if (code === "EACCES" || code === "EPERM")
+                    if (code === "ENOENT")
+                        continue;
+                    if (code === "EACCES" || code === "EPERM") {
+                        matched = true;
+                        reportPaths.push(path);
                         unreadable.push(relativeRootPath(root, path));
+                    }
                     else
                         throw error;
                 }
@@ -41224,7 +41247,7 @@ const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutp
     const baselineBeforeCommand = context.baselineBeforeCommand
         ? await load_readBaselineIfPresent(loaded.root, loaded.baselinePath)
         : undefined;
-    await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config));
+    await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config), [loaded.configPath, loaded.baselinePath]);
     const commandStartedAt = Date.now();
     const command = await command_runConfiguredCommand(loaded.root, loaded.config.command, suppressCommandOutput);
     if (command.finding)
@@ -41546,7 +41569,7 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
                 throw error;
         }
     }
-    await cleanReports(existingReportPaths);
+    await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath]);
     const commandStartedAt = Date.now();
     const command = await runConfiguredCommand(loaded.root, loaded.config.command);
     if (command.finding)
