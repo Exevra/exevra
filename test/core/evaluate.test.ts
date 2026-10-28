@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadConfig } from "../../src/core/config.js";
 import { evaluate } from "../../src/core/evaluate.js";
-import { testIdHashes, testIdsHash } from "../../src/core/junit.js";
+import { parseJunit, testIdHashes, testIdsHash } from "../../src/core/junit.js";
 import type { Baseline, Config, CanonicalSuite } from "../../src/core/model.js";
 
 const config: Config = {
@@ -445,4 +445,17 @@ test("protected suite detail policy overrides the default", () => {
       addedTestIds: [gamma],
     },
   ]);
+});
+
+test("identity enforcement detects ambiguous newline-delimited legacy hashes", () => {
+  const xml = (first: string, second: string) => `<testsuite name="unit">${first}${second}</testsuite>`;
+  const previous = parseJunit(xml('<testcase classname="a" name="b&#10;c"/>', '<testcase classname="d" name="e"/>'), "before.xml")[0]!.tests.map(({ id }) => id);
+  const current = parseJunit(xml('<testcase classname="a" name="b"/>', '<testcase classname="c&#10;d" name="e"/>'), "after.xml")[0]!.tests.map(({ id }) => id);
+  const before = detailedIdentityBaseline(previous);
+  const after = identitySuite(current);
+  assert.equal(before.suites[0]!.testIdsHash, testIdsHash(after[0]!.tests));
+  const input = { config: identityConfig("enforce"), baseline: before, currentSuites: after };
+  assert.ok(evaluate(input).findings.some((finding) => finding.code === "TEST_IDENTITIES_CHANGED" && finding.severity === "error"));
+  assert.ok(evaluate({ ...input, baseline: identityBaseline(previous) }).findings.some((finding) => finding.code === "TEST_IDENTITIES_CHANGED" && finding.severity === "error"));
+  assert.deepEqual(evaluate({ ...input, currentSuites: identitySuite(previous) }).findings, []);
 });

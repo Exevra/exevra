@@ -12,7 +12,10 @@ const commandFinding = (exitCode: number | null): Finding => ({
 
 export const cleanReports = async (
   reportPaths: readonly string[],
+  protectedPaths: readonly string[] = [],
 ): Promise<void> => {
+  if (reportPaths.some((path) => protectedPaths.includes(path)))
+    throw new RuntimeError("configured report overlaps configuration or baseline");
   for (const path of reportPaths) {
     try {
       const entry = await lstat(path);

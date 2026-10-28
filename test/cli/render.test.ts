@@ -515,3 +515,11 @@ test("doctor renderers omit inherited findings and execution details", () => {
   assert.doesNotMatch(githubActions, forbidden);
   assert.deepEqual(Object.keys(JSON.parse(json)), ["outcome", "checks"]);
 });
+
+test("text output cannot turn report-controlled suite names into workflow commands", () => {
+  const suite = "unit\n::warning::injected\r\n::add-mask::value";
+  const text = renderText({ findings: [{ ...blocked.findings[0]!, suite, message: `Suite ${suite} failed` }] });
+  assert.doesNotMatch(text, /(?:^|\n)::(?:warning|add-mask)::/);
+  assert.match(text, /unit\\n::warning::injected/);
+  assert.match(renderText(blocked), /unit: 10 -> 0/);
+});

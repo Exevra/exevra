@@ -132,13 +132,21 @@ const doctorLines = (checks?: readonly DoctorCheck[]): string[] => {
   ];
 };
 
+export const escapeTextControls = (value: string): string =>
+  value.replace(/[\u0000-\u001f\u007f-\u009f]/g, (character) => {
+    if (character === "\n") return "\\n";
+    if (character === "\r") return "\\r";
+    if (character === "\t") return "\\t";
+    return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
+  });
+
 export const renderText = (
   input: RenderInput,
   options: TextRenderOptions = {},
 ): string => {
   const lines = [outcomeText(input)];
   if (input.checks !== undefined)
-    return `${[...lines, ...doctorLines(input.checks)].join("\n")}\n`;
+    return `${[...lines, ...doctorLines(input.checks)].map(escapeTextControls).join("\n")}\n`;
   for (const finding of orderedFindings(input.findings))
     lines.push(findingLine(finding));
   for (const line of diffLines(input.changes))
@@ -147,7 +155,7 @@ export const renderText = (
     lines.push(detail);
   for (const notice of [...(input.notices ?? [])].sort(compare))
     lines.push(`NOTICE: ${notice}`);
-  return `${lines.join("\n")}\n`;
+  return `${lines.map(escapeTextControls).join("\n")}\n`;
 };
 
 export const renderJson = (input: RenderInput): string =>

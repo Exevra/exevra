@@ -110,18 +110,21 @@ export const evaluate = ({
           { suite: name, baseExecuted, headExecuted },
         ),
       );
+    const hashDiff = currentSuite && baselineSuite?.testIdHashes && rule.identity !== "off"
+      ? multisetDifference(baselineSuite.testIdHashes, testIdHashes(currentSuite.tests))
+      : undefined;
+    const ambiguousLegacy = currentSuite && baselineSuite && !baselineSuite.testIdHashes &&
+      currentSuite.tests.some(({ id }) => id.includes("\n"));
     if (
       currentSuite &&
       baselineSuite &&
       rule.identity !== "off" &&
-      testIdsHash(currentSuite.tests) !== baselineSuite.testIdsHash
+      (hashDiff
+        ? hashDiff.missing.length > 0 || hashDiff.added.length > 0
+        : testIdsHash(currentSuite.tests) !== baselineSuite.testIdsHash ||
+          currentSuite.tests.length !== baselineSuite.executed + baselineSuite.skipped ||
+          ambiguousLegacy)
     ) {
-      const hashDiff = baselineSuite.testIdHashes
-        ? multisetDifference(
-            baselineSuite.testIdHashes,
-            testIdHashes(currentSuite.tests),
-          )
-        : undefined;
       const includeNames =
         rule.identityDetails === "names" && baselineSuite.testIds !== undefined;
       if (includeNames) {
@@ -138,7 +141,9 @@ export const evaluate = ({
       findings.push(
         finding(
           "TEST_IDENTITIES_CHANGED",
-          `Test identities changed in suite ${name}.`,
+          ambiguousLegacy
+            ? `Test identities in suite ${name} cannot be verified with the legacy baseline.`
+            : `Test identities changed in suite ${name}.`,
           {
             severity: rule.identity === "enforce" ? "error" : "warning",
             suite: name,

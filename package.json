@@ -38,16 +38,17 @@
     "test:coverage": "npm run bundle && mkdir -p coverage && node --experimental-test-coverage --test-coverage-lines=95 --test-coverage-branches=85 --test-reporter=spec --test-reporter=lcov --test-reporter-destination=stdout --test-reporter-destination=coverage/lcov.info --test-coverage-include='build/src/**/*.js' --test build/test/core/*.test.js build/test/runtime/*.test.js build/test/cli/*.test.js build/test/action/*.test.js",
     "test:core": "npm run build && node --test build/test/core/*.test.js",
     "test:runtime": "npm run build && node --test build/test/runtime/*.test.js",
-    "test:cli": "npm run build && node --test build/test/cli/*.test.js"
+    "test:cli": "npm run build && node --test build/test/cli/*.test.js",
+    "version": "node scripts/sync-release-version.mjs"
   },
   "dependencies": {
-    "@actions/core": "^2.0.3",
+    "@actions/core": "^3.0.1",
     "saxes": "^6.0.0",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.5",
     "@vercel/ncc": "^0.45.0",
-    "typescript": "^5.8.3"
+    "typescript": "^7.0.2"
   }
 }

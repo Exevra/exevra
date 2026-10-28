@@ -4,6 +4,7 @@ import { appendFile } from "node:fs/promises";
 import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  escapeTextControls,
   renderGitHubActions,
   renderJson,
   renderText,
@@ -271,7 +272,7 @@ export const main = async (
     process.stderr.write(
       arguments_[0] === "doctor"
         ? "Invalid invocation: doctor arguments are invalid\n"
-        : `Invalid invocation: ${(error as Error).message}\n`,
+        : `Invalid invocation: ${escapeTextControls((error as Error).message)}\n`,
     );
     return 2;
   }
@@ -364,7 +365,7 @@ export const main = async (
     process.stderr.write(
       invocation.command === "doctor"
         ? "Operational error: doctor could not complete\n"
-        : `Operational error: ${(error as Error).message}\n`,
+        : `Operational error: ${escapeTextControls((error as Error).message)}\n`,
     );
     return 2;
   }
@@ -384,7 +385,7 @@ if (isEntrypoint()) {
       process.exitCode = code;
     })
     .catch((error: unknown) => {
-      process.stderr.write(`Operational error: ${(error as Error).message}\n`);
+      process.stderr.write(`Operational error: ${escapeTextControls((error as Error).message)}\n`);
       process.exitCode = 2;
     });
 }

@@ -57,6 +57,7 @@ const runCheck = async ({
     : undefined;
   await cleanReports(
     await expandConfiguredReportPaths(loaded.root, loaded.config),
+    [loaded.configPath, loaded.baselinePath],
   );
   const commandStartedAt = Date.now();
   const command = await runConfiguredCommand(

@@ -5,7 +5,7 @@
     "test": "jest --runInBand"
   },
   "devDependencies": {
-    "jest": "30.4.2",
+    "jest": "30.5.2",
     "jest-junit": "17.0.0"
   }
 }

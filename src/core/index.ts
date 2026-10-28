@@ -22,6 +22,7 @@ export {
   type MultisetDifference,
 } from "./identity.js";
 export {
+  escapeTextControls,
   renderGitHubActions,
   renderJson,
   renderText,

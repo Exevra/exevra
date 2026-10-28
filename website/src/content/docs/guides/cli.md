@@ -6,7 +6,7 @@ description: Install the CLI, then initialize, record, check, doctor, diff, or a
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.4.4
+npm install --save-dev @exevra-dev/cli@latest
 ```
 
 Run `npx exevra --help` (or `npx exevra -h`) to print the available commands and their options.
@@ -43,7 +43,7 @@ For v0, `init` accepts ASCII characters only in the configuration filename, repo
 
 For Maven projects using standard Surefire and/or Failsafe report directories, use `npx exevra init --maven`. It runs `mvn verify` and reads those directories for the root and recursively declared child modules. Root-only and multi-module configurations include `maven: { modules: auto, filter_policy: warn }`; custom report directories, profiles, and property expansion are outside this setup path.
 
-For Gradle multi-project builds using standard JUnit XML output, use `npx exevra init --gradle`. It runs `gradle test` and reads `build/test-results/test/TEST-*.xml` for every project declared by `settings.gradle` or `settings.gradle.kts`. If no settings file is present, the root project is checked as a single project. Missing or unreadable child-project reports are reported as integrity findings.
+For Gradle multi-project builds using standard JUnit XML output, use `npx exevra init --gradle`. It runs `gradle test` and reads `build/test-results/test/TEST-*.xml` for the root and every project declared by `settings.gradle` or `settings.gradle.kts`. Every discovered project must produce a report, including the root. For a root project without tests, use explicit report configuration. If no settings file is present, the root project is checked as a single project. Missing or unreadable child-project reports are reported as integrity findings.
 
 ### Maven test-filter policy
 

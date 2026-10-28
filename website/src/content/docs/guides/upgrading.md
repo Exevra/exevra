@@ -1,16 +1,16 @@
 ---
-title: Upgrade to v0.4.4
-description: Move from Exevra v0.4.3 to the v0.4.4 command and configuration surface.
+title: Upgrade Exevra
+description: Update Exevra and verify your execution contract.
 ---
 
-Exevra v0.4.4 updates the Undici dependency bundled with the GitHub Action, documentation dependencies, and CodeQL Action. It remains compatible with existing version-1 `.exevra.yml` files and schema-version-1 baselines; no migration is required.
+Check the [release notes](../../reference/releases/) for compatibility and migration details before upgrading.
 
 ## Update the CLI and Action
 
 Update the development dependency and lockfile:
 
 ```sh
-npm install --save-dev @exevra-dev/cli@0.4.4
+npm install --save-dev @exevra-dev/cli@latest
 ```
 
 If a workflow uses the GitHub Action, update its versioned reference:

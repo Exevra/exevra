@@ -1,5 +1,5 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export class RuntimeError extends Error {
   constructor(message: string) {
@@ -24,10 +24,8 @@ export const configRootFor = async (
     throw new RuntimeError(
       `configuration file must not be a symlink: ${absoluteConfigPath}`,
     );
-  return {
-    configPath: absoluteConfigPath,
-    root: await realpath(dirname(absoluteConfigPath)),
-  };
+  const root = await realpath(dirname(absoluteConfigPath));
+  return { configPath: join(root, basename(absoluteConfigPath)), root };
 };
 
 export const assertSafeInRootPath = async (
