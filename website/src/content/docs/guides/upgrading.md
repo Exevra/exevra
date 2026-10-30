@@ -16,7 +16,7 @@ npm install --save-dev @exevra-dev/cli@latest
 If a workflow uses the GitHub Action, update its versioned reference:
 
 ```yaml
-- uses: Exevra/exevra@v0.4.4
+- uses: Exevra/exevra@v0.4.5
 ```
 
 Keep `uses: ./` only for testing a checked-out copy of Exevra.
