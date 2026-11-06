@@ -1,5 +1,6 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { basename, dirname, relative, sep } from "node:path";
+import { compileGlob } from "../core/glob.js";
 import {
   aggregateSuites,
   type AggregationConfig,
@@ -31,23 +32,20 @@ export interface ReportCollection {
   unreadableReports: string[];
 }
 
-const pattern = (value: string): RegExp =>
-  new RegExp(
-    `^${value
-      .split("*")
-      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join(".*")}$`,
-  );
-
 const relativeRootPath = (root: string, path: string): string => {
   const value = relative(root, path).split(sep).join("/");
   return value === "" ? "." : value;
 };
 
+const reportIdentity = async (path: string): Promise<string> => {
+  const entry = await lstat(path, { bigint: true });
+  return `${entry.dev}:${entry.ino}`;
+};
+
 export const expandReportPaths = async (
   root: string,
   reports: readonly string[],
-  rejectSymlinks = false,
+  rejectSymlinks = true,
   diagnosticRoot = root,
   onUnreadableDirectory?: (path: string) => void,
 ): Promise<string[]> => {
@@ -62,14 +60,15 @@ export const expandReportPaths = async (
     const directory = dirname(report);
     if (directory.includes("*"))
       throw new Error("report wildcards are only supported in file names");
-    const directoryPath = resolveInRoot(root, directory);
-    await assertSafeInRootPath(root, directoryPath);
+    const directoryPath = directory === "." ? root : resolveInRoot(root, directory);
+    if (directory !== ".") await assertSafeInRootPath(root, directoryPath);
+    const matcher = compileGlob(basename(report));
     try {
       const entries = await readdir(directoryPath, { withFileTypes: true });
       for (const entry of entries.sort((left, right) =>
         left.name.localeCompare(right.name),
       )) {
-        if (!pattern(basename(report)).test(entry.name)) continue;
+        if (!matcher.test(entry.name)) continue;
         if (rejectSymlinks && entry.isSymbolicLink())
           throw new RuntimeError(
             `configured report path is a symlink and will not be read: ${relativeRootPath(diagnosticRoot, resolveInRoot(root, `${directory}/${entry.name}`))}`,
@@ -89,7 +88,7 @@ export const expandReportPaths = async (
       throw error;
     }
   }
-  return paths;
+  return [...new Set(paths)];
 };
 
 export const missingReportPatterns = async (
@@ -97,7 +96,7 @@ export const missingReportPatterns = async (
   reports: readonly string[],
 ): Promise<string[]> => {
   const patterns = reports.filter((report) => report.includes("*"));
-  if (patterns.length === 0) return [];
+  if (patterns.length !== reports.length || patterns.length === 0) return [];
   return (await expandReportPaths(root, patterns)).length === 0 ? patterns : [];
 };
 
@@ -106,10 +105,14 @@ export const loadReports = async (
   reports: readonly string[],
 ): Promise<CanonicalSuite[]> => {
   const observations: CanonicalSuite[] = [];
+  const seen = new Set<string>();
   for (const path of await expandReportPaths(root, reports)) {
+    const identity = await reportIdentity(path);
+    if (seen.has(identity)) continue;
     observations.push(
       ...parseJunit(await readFile(path, "utf8"), relative(root, path)),
     );
+    seen.add(identity);
   }
   return aggregateSuites(observations);
 };
@@ -156,6 +159,7 @@ const loadBuildReports = async (
   for (const module of modules) {
     if (module.aggregator) continue;
     const moduleRoot = moduleRootFor(root, module);
+    const seen = new Set<string>();
     let matched = false;
     let unreadableDirectory = false;
     const expected: string[] = [];
@@ -173,11 +177,17 @@ const loadBuildReports = async (
         },
       )) {
         try {
+          const identity = await reportIdentity(path);
+          if (seen.has(identity)) {
+            matched = true;
+            continue;
+          }
           observations.push(
             ...parseJunit(await readFile(path, "utf8"), relative(root, path)),
           );
           matched = true;
           reportPaths.push(path);
+          seen.add(identity);
         } catch (error) {
           const code = (error as NodeJS.ErrnoException).code;
           if (code === "ENOENT") continue;
@@ -263,14 +273,21 @@ export const loadAggregatedReports = async (
 
     const reportPaths: string[] = [];
     const observations: CanonicalSuite[] = [];
+    const seen = new Set<string>();
     for (const report of [...aggregation.reports].sort()) {
       let matched = false;
       for (const path of await expandReportPaths(shardRoot, [report])) {
         try {
+          const identity = await reportIdentity(path);
+          if (seen.has(identity)) {
+            matched = true;
+            continue;
+          }
           observations.push(
             ...parseJunit(await readFile(path, "utf8"), relative(shardRoot, path)),
           );
           reportPaths.push(path);
+          seen.add(identity);
           matched = true;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import test from "node:test";
@@ -9,6 +9,8 @@ import {
   type GradleModule,
 } from "../../src/runtime/gradle.js";
 import { loadConfiguredReports } from "../../src/runtime/reports.js";
+import { check } from "../../src/runtime/check.js";
+import { record } from "../../src/runtime/record.js";
 
 const temporaryProject = async (): Promise<string> =>
   mkdtemp(join(tmpdir(), "exevra-gradle-"));
@@ -97,6 +99,7 @@ test("discovers Kotlin DSL includes and falls back to the root project", async (
       [
         { path: ".", projectPath: ":" },
         { path: "app", projectPath: ":app" },
+        { path: "services", projectPath: ":services" },
         { path: "services/api", projectPath: ":services:api" },
       ],
     );
@@ -175,6 +178,70 @@ test("collects standard Gradle reports for every included project", async () => 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("collects implicit Gradle parent reports and requires them when the parent has tests", async () => {
+  const root = await temporaryProject();
+  try {
+    await writeSettings(root, "include(':services:api')\n");
+    await writeDirectory(root, "services/src/test/java");
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
+    await writeReport(root, "services/build/test-results/test/TEST-services.xml", "services");
+    await writeReport(root, "services/api/build/test-results/test/TEST-api.xml", "api");
+    const complete = await loadConfiguredReports(root, gradleConfig());
+    assert.deepEqual(complete.suites.map(({ name }) => name), ["api", "root", "services"]);
+    assert.deepEqual(complete.missingReports, []);
+    await rm(join(root, "services/build/test-results/test/TEST-services.xml"));
+    const missing = await loadConfiguredReports(root, gradleConfig());
+    assert.ok(missing.missingReports.includes("services/build/test-results/test/TEST-*.xml"));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("implicit Gradle parents without tests do not require reports", async () => {
+  const root = await temporaryProject();
+  try {
+    await writeSettings(root, "include(':services:api')\n");
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
+    await writeReport(root, "services/api/build/test-results/test/TEST-api.xml", "api");
+    const result = await loadConfiguredReports(root, gradleConfig());
+    assert.deepEqual(result.missingReports, []);
+    assert.deepEqual(result.suites.map(({ name }) => name), ["api", "root"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("cleans and checks implicit parent reports against the recorded baseline", async () => {
+  const root = await temporaryProject();
+  try {
+    await writeSettings(root, "include(':services:api')\n");
+    await writeDirectory(root, "services/src/test/java");
+    await writeDirectory(root, "services/api");
+    const configPath = join(root, ".exevra.yml");
+    await writeFile(configPath, JSON.stringify({ version: 1, baseline: "baseline.json", command: "node runner.mjs", reports: ["build/test-results/test/TEST-*.xml"], gradle: { modules: "auto" }, policy: { default: { min_executed: 1, max_drop_percent: 0 } } }));
+    await writeFile(join(root, "runner.mjs"), `import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+for (const [dir, name] of [['build/test-results/test', 'root'], ['services/build/test-results/test', 'services'], ['services/api/build/test-results/test', 'api']]) {
+  if (name === 'services' && existsSync('skip-parent')) continue;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(dir + '/TEST-' + name + '.xml', '<testsuite name="' + name + '"><testcase name="test"/></testsuite>');
+}`);
+    await record({ configPath });
+    await writeFile(join(root, "skip-parent"), "");
+    const result = await check({ configPath });
+    assert.ok(result.findings.some(({ code }) => code === "REPORT_MISSING"));
+    await assert.rejects(readFile(join(root, "services/build/test-results/test/TEST-services.xml")));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("finds custom directories assigned to implicit Gradle parents", async () => {
+  const root = await temporaryProject();
+  try {
+    await writeSettings(root, "include(':services:api')\nproject(':services').projectDir = file('components')\n");
+    await writeDirectory(root, "services/api");
+    await writeReport(root, "build/test-results/test/TEST-root.xml", "root");
+    await writeReport(root, "components/build/test-results/test/TEST-parent.xml", "parent");
+    await writeReport(root, "services/api/build/test-results/test/TEST-api.xml", "api");
+    const result = await loadConfiguredReports(root, gradleConfig());
+    assert.deepEqual(result.suites.map(({ name }) => name), ["api", "parent", "root"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("makes a missing Gradle project report visible", async () => {

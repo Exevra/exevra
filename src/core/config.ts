@@ -1,4 +1,5 @@
 import { parseDocument } from "yaml";
+import { compileSuitePattern } from "./identity.js";
 import type {
   AggregationConfig,
   Config,
@@ -200,6 +201,12 @@ export const loadConfig = (source: string | unknown): Config => {
       : value.policy.protected_suites;
   if (!Array.isArray(protectedValues))
     throw new CoreValidationError("policy.protected_suites must be an array");
+  if (protectedValues.length > 0 && value.policy.pattern_engine !== "re2")
+    throw new CoreValidationError(
+      "protected suite patterns require policy.pattern_engine: re2 after reviewing RE2 matching semantics",
+    );
+  if (value.policy.pattern_engine !== undefined && value.policy.pattern_engine !== "re2")
+    throw new CoreValidationError("policy.pattern_engine must be re2");
   const protectedSuites: ProtectedSuitePolicy[] = protectedValues.map(
     (item, index) => {
       if (!isRecord(item))
@@ -211,10 +218,10 @@ export const loadConfig = (source: string | unknown): Config => {
         `policy.protected_suites[${index}].match`,
       );
       try {
-        new RegExp(match);
+        compileSuitePattern(match);
       } catch {
         throw new CoreValidationError(
-          `policy.protected_suites[${index}].match must be a valid regular expression`,
+          `policy.protected_suites[${index}].match must be a valid supported regular expression (RE2 syntax)`,
         );
       }
       return {

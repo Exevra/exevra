@@ -28,6 +28,12 @@ export interface RecordResult {
   findings: Finding[];
 }
 
+export class BaselineExistsError extends RuntimeError {
+  constructor(path: string) {
+    super(`baseline already exists: ${path}; pass explicit write permission to overwrite it`);
+  }
+}
+
 const atomicWriteBaseline = async (
   path: string,
   contents: string,
@@ -39,7 +45,15 @@ const atomicWriteBaseline = async (
     await file.writeFile(contents, "utf8");
     await file.close();
     if (overwrite) await rename(temporary, path);
-    else await link(temporary, path);
+    else {
+      try {
+        await link(temporary, path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST")
+          throw new BaselineExistsError(path);
+        throw error;
+      }
+    }
   } finally {
     await file.close().catch(() => undefined);
     await rm(temporary, { force: true }).catch(() => undefined);
@@ -73,9 +87,7 @@ export const record = async ({
   if (!write) {
     try {
       await access(loaded.baselinePath, constants.F_OK);
-      throw new RuntimeError(
-        `baseline already exists: ${loaded.baselinePath}; pass explicit write permission to overwrite it`,
-      );
+      throw new BaselineExistsError(loaded.baselinePath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }

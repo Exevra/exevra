@@ -21,12 +21,13 @@ export const changedFiles = async (
   return new Promise((resolveResult, reject) => {
     const child = spawn(
       "git",
-      ["diff", "--name-only", `${baseRef}...HEAD`, "--"],
+      ["diff", "--no-renames", "--name-only", "-z", `${baseRef}...HEAD`, "--"],
       { cwd: root, shell: false },
     );
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
       stdout += chunk;
     });
     child.stderr.on("data", (chunk: Buffer) => {
@@ -42,7 +43,7 @@ export const changedFiles = async (
             `Git diff failed for base ref ${baseRef}: ${stderr.trim() || `exit ${code}`}`,
           ),
         );
-      else resolveResult(stdout.split("\n").filter(Boolean));
+      else resolveResult(stdout.split("\0").filter(Boolean));
     });
   });
 };

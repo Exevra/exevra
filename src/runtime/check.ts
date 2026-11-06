@@ -26,7 +26,6 @@ interface CheckSnapshot extends CheckResult {
 }
 interface RunCheckContext {
   loaded?: Awaited<ReturnType<typeof loadRuntimeConfig>>;
-  baselineBeforeCommand?: boolean;
 }
 const runCheck = async ({
   configPath,
@@ -52,9 +51,7 @@ const runCheck = async ({
       baseline: undefined,
     };
   const findings = filterFindings;
-  const baselineBeforeCommand = context.baselineBeforeCommand
-    ? await readBaselineIfPresent(loaded.root, loaded.baselinePath)
-    : undefined;
+  const baseline = await readBaselineIfPresent(loaded.root, loaded.baselinePath);
   await cleanReports(
     await expandConfiguredReportPaths(loaded.root, loaded.config),
     [loaded.configPath, loaded.baselinePath],
@@ -90,9 +87,6 @@ const runCheck = async ({
       baseline: undefined,
     };
   const suites = reports.suites;
-  const baseline = context.baselineBeforeCommand
-    ? baselineBeforeCommand
-    : await readBaselineIfPresent(loaded.root, loaded.baselinePath);
   let paths = changedPaths;
   if (paths === undefined && baseRef !== undefined)
     paths = await changedFiles(loaded.root, baseRef);
@@ -157,7 +151,6 @@ export const diff = async (options: CheckOptions): Promise<DiffResult> => {
   const loaded = await loadRuntimeConfig(options.configPath);
   const { config, ...result } = await runCheck(options, {
     loaded,
-    baselineBeforeCommand: true,
   });
   if (result.suites.length === 0) return result;
   const baseline = result.baseline;

@@ -43,7 +43,9 @@ For v0, `init` accepts ASCII characters only in the configuration filename, repo
 
 For Maven projects using standard Surefire and/or Failsafe report directories, use `npx exevra init --maven`. It runs `mvn verify` and reads those directories for the root and recursively declared child modules. Root-only and multi-module configurations include `maven: { modules: auto, filter_policy: warn }`; custom report directories, profiles, and property expansion are outside this setup path.
 
-For Gradle multi-project builds using standard JUnit XML output, use `npx exevra init --gradle`. It runs `gradle test` and reads `build/test-results/test/TEST-*.xml` for the root and every project declared by `settings.gradle` or `settings.gradle.kts`. Every discovered project must produce a report, including the root. For a root project without tests, use explicit report configuration. If no settings file is present, the root project is checked as a single project. Missing or unreadable child-project reports are reported as integrity findings.
+For Gradle multi-project builds using standard JUnit XML output, use `npx exevra init --gradle`. It runs `gradle test` and reads `build/test-results/test/TEST-*.xml` for the root, declared projects, and intermediate parent projects. The root and explicitly included projects must produce reports; intermediate parents without `src/test` may omit them. For a root project without tests, or an intermediate parent with custom test sources that must produce a report on the first run, use explicit report configuration. If no settings file is present, the root project is checked as a single project. Missing or unreadable required reports are reported as integrity findings.
+
+For pytest, use `npx exevra init --pytest` with pytest installed in the active Python environment. It runs `python3 -m pytest --junitxml=artifacts/junit.xml`. Use `--command "poetry run pytest"` or another pytest invocation without JUnit flags to select a different environment; Exevra appends the report option. To choose a different report path, use the explicit `--command` and `--report` form instead.
 
 ### Maven test-filter policy
 
@@ -60,6 +62,8 @@ npx exevra init \
 ```
 
 If the first test run fails, produces no valid JUnit report, or reports zero executed tests, `.exevra.yml` remains, but `.exevra/baseline.json` is not created. Fix the test command, then create the baseline from that configuration.
+
+If the generated policy blocks an initial suite, Exevra reports the suite and keeps the recorded baseline and configuration for review. After resolving the suite or policy, run `npx exevra check`. A baseline that exists before initialization is left untouched, and no new configuration is created.
 
 ```sh
 npx exevra record --config .exevra.yml

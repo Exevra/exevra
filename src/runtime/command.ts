@@ -16,6 +16,15 @@ export const cleanReports = async (
 ): Promise<void> => {
   if (reportPaths.some((path) => protectedPaths.includes(path)))
     throw new RuntimeError("configured report overlaps configuration or baseline");
+  const protectedEntries = await Promise.all(protectedPaths.map(async (path) => {
+    try {
+      return await lstat(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }));
+  const removable: string[] = [];
   for (const path of reportPaths) {
     try {
       const entry = await lstat(path);
@@ -27,12 +36,16 @@ export const cleanReports = async (
         throw new RuntimeError(
           `configured report path is a directory and will not be removed: ${path}`,
         );
-      await rm(path, { force: false });
+      if (protectedEntries.some((protectedEntry) => protectedEntry &&
+        protectedEntry.dev === entry.dev && protectedEntry.ino === entry.ino))
+        throw new RuntimeError("configured report overlaps configuration or baseline");
+      removable.push(path);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw error;
     }
   }
+  for (const path of removable) await rm(path, { force: true });
 };
 
 export const runConfiguredCommand = async (
