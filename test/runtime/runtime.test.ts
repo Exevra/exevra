@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   cp,
   chmod,
+  link,
   mkdir,
   mkdtemp,
   readFile,
@@ -11,7 +12,9 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { dirname, join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { JunitParseError, loadConfig } from "../../src/core/index.js";
 import {
@@ -32,6 +35,7 @@ import {
 } from "../../src/runtime/command.js";
 import {
   expandConfiguredReportPaths,
+  expandReportPaths,
   loadAggregatedReports,
   loadConfiguredReports,
 } from "../../src/runtime/reports.js";
@@ -293,6 +297,198 @@ test("loadAggregatedReports records missing shards and report patterns", async (
   assert.deepEqual(result.missingReports, [
     "artifacts/shards/unit-empty/target/surefire-reports/TEST-*.xml",
   ]);
+});
+
+test("overlapping report paths count each report once in every collector", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "out"));
+  await writeFile(join(root, "out", "one.xml"), '<testsuite name="unit"><testcase name="one"/></testsuite>');
+  const reports = ["out/one.xml", "out/*.xml"];
+  for (const build of [undefined, "maven", "gradle"] as const) {
+    const config = loadConfig({
+      version: 1, baseline: ".exevra/baseline.json", command: "true", reports,
+      ...(build === undefined ? {} : { [build]: { modules: "auto" } }),
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+    });
+    const result = await loadConfiguredReports(root, config);
+    assert.deepEqual(result.missingReports, [], build ?? "generic");
+    assert.equal(result.suites[0]?.executed, 1, build ?? "generic");
+    assert.equal(result.reportPaths.length, 1, build ?? "generic");
+  }
+  await writeShardReport(root, "unit-jdk17", ["test-1"]);
+  const aggregated = await loadAggregatedReports(root, {
+    root: "artifacts/shards", shards: ["unit-jdk17"],
+    reports: ["target/surefire-reports/TEST-unit.xml", "target/surefire-reports/TEST-*.xml"],
+  });
+  assert.deepEqual(aggregated.missingReports, []);
+  assert.equal(aggregated.shards[0]?.suites[0]?.executed, 1);
+  assert.equal(aggregated.shards[0]?.reportPaths.length, 1);
+});
+
+test("report aliases count once within each collection while separate shards remain independent", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "out"));
+  const report = join(root, "out", "one.xml");
+  await writeFile(report, '<testsuite name="unit"><testcase name="one"/></testsuite>');
+  await link(report, join(root, "out", "alias.xml"));
+  const reports = ["out/one.xml", "out/*.xml"];
+  for (const build of [undefined, "maven", "gradle"] as const) {
+    const config = loadConfig({ version: 1, baseline: ".exevra/baseline.json", command: "true", reports,
+      ...(build === undefined ? {} : { [build]: { modules: "auto" } }),
+      policy: { default: { min_executed: 1, max_drop_percent: 0 } } });
+    const result = await loadConfiguredReports(root, config);
+    assert.deepEqual(result.missingReports, [], build ?? "generic");
+    assert.equal(result.suites[0]?.executed, 1, build ?? "generic");
+  }
+  for (const shard of ["one", "two"]) {
+    const dir = join(root, "artifacts", "shards", shard);
+    await mkdir(dir, { recursive: true });
+    await link(report, join(dir, "one.xml"));
+    await link(report, join(dir, "alias.xml"));
+  }
+  const result = await loadAggregatedReports(root, { root: "artifacts/shards", shards: ["one", "two"], reports: ["one.xml", "*.xml"] });
+  assert.deepEqual(result.missingReports, []);
+  assert.deepEqual(result.shards.map((shard) => shard.suites[0]?.executed), [1, 1]);
+});
+
+test("case aliases of one report are counted once on case-insensitive filesystems", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-case-report-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "out"));
+  await writeFile(join(root, "out", "ONE.xml"), '<testsuite name="unit"><testcase name="one"/></testsuite>');
+  try { await readFile(join(root, "out", "one.xml")); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return t.skip("filesystem is case-sensitive");
+    throw error;
+  }
+  const config = loadConfig({ version: 1, baseline: "baseline.json", command: "true", reports: ["out/one.xml", "out/*.xml"], policy: { default: { min_executed: 1, max_drop_percent: 0 } } });
+  assert.equal((await loadConfiguredReports(root, config)).suites[0]?.executed, 1);
+});
+
+test("cleanup removes every hard-linked report path before running the command", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-hardlink-cleanup-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "runner.mjs"), "import { existsSync, linkSync, mkdirSync, writeFileSync } from 'node:fs';\n" +
+    "mkdirSync('out', { recursive: true });\n" +
+    "const later = existsSync('later');\n" +
+    "const xml = names => '<testsuite name=\"unit\">' + names.map(name => '<testcase name=\"' + name + '\"/>').join('') + '</testsuite>';\n" +
+    "writeFileSync('out/a.xml', xml(later ? ['a', 'new'] : ['a']));\n" +
+    "linkSync('out/a.xml', 'out/alias.xml');\n" +
+    "if (!later) writeFileSync('out/b.xml', xml(['b', 'c']));\n");
+  const configPath = join(root, ".exevra.yml");
+  await initialize({ configPath, command: "node runner.mjs", reportPath: ["out/a.xml", "out/*.xml"] });
+  await writeFile(join(root, "later"), "");
+  const result = await check({ configPath });
+  assert.equal(result.suites[0]?.executed, 2);
+  assert.ok(result.findings.some((finding) => finding.code === "SUITE_DROP_EXCEEDED"));
+});
+
+test("mixed literal and wildcard reports allow an unmatched pattern", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "out"));
+  await writeFile(join(root, "out", "one.xml"), '<testsuite name="unit"><testcase name="one"/></testsuite>');
+  const config = loadConfig({ version: 1, baseline: ".exevra/baseline.json", command: "true", reports: ["out/one.xml", "out/optional*.xml"], policy: { default: { min_executed: 1, max_drop_percent: 0 } } });
+  const result = await loadConfiguredReports(root, config);
+  assert.deepEqual(result.missingReports, []);
+  assert.equal(result.suites[0]?.executed, 1);
+});
+
+test("report patterns can match files directly in the project root", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "junit.xml"), '<testsuite name="unit"><testcase name="one"/></testsuite>');
+  assert.deepEqual(await expandReportPaths(root, ["*.xml"]), [join(root, "junit.xml")]);
+  const config = loadConfig({ version: 1, baseline: ".exevra/baseline.json", command: "true", reports: ["*.xml"], policy: { default: { min_executed: 1, max_drop_percent: 0 } } });
+  assert.equal((await loadConfiguredReports(root, config)).suites[0]?.executed, 1);
+  const shard = join(root, "artifacts", "shards", "one");
+  await mkdir(shard, { recursive: true });
+  await writeFile(join(shard, "junit.xml"), '<testsuite name="unit"><testcase name="one"/></testsuite>');
+  const aggregated = await loadAggregatedReports(root, { root: "artifacts/shards", shards: ["one"], reports: ["*.xml"] });
+  assert.deepEqual(aggregated.missingReports, []);
+  assert.equal(aggregated.shards[0]?.suites[0]?.executed, 1);
+});
+
+test("report wildcards match filenames containing line breaks", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-glob-newline-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "junit\npart.xml");
+  await writeFile(path, '<testsuite name="unit"><testcase name="one"/></testsuite>');
+  assert.deepEqual(await expandReportPaths(root, ["*.xml"]), [path]);
+});
+
+test("wildcard report symlinks stop check and record before the command runs", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-report-symlink-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "out"));
+  await writeFile(join(root, "important.txt"), "keep this");
+  await symlink(join(root, "important.txt"), join(root, "out", "result.xml"));
+  const configPath = join(root, ".exevra.yml");
+  await writeFile(configPath, `version: 1\nbaseline: baseline.json\ncommand: printf replaced > out/result.xml\nreports: [out/*.xml]\npolicy:\n  default:\n    min_executed: 1\n    max_drop_percent: 0\n`);
+  for (const run of [() => check({ configPath }), () => record({ configPath, write: true })]) {
+    await assert.rejects(run(), /configured report path is a symlink/);
+    assert.equal(await readFile(join(root, "important.txt"), "utf8"), "keep this");
+  }
+  await rm(join(root, "out", "result.xml"));
+  await symlink(join(root, "missing"), join(root, "out", "dangling.xml"));
+  await assert.rejects(expandReportPaths(root, ["out/*.xml"]), /configured report path is a symlink/);
+  const shard = join(root, "shards", "one");
+  await mkdir(shard, { recursive: true });
+  await symlink(join(root, "important.txt"), join(shard, "result.xml"));
+  await assert.rejects(
+    loadAggregatedReports(root, { root: "shards", shards: ["one"], reports: ["*.xml"] }),
+    /configured report path is a symlink/,
+  );
+});
+
+test("report and watched patterns handle hostile filenames in bounded time", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-glob-load-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "out"));
+  await writeFile(join(root, "out", "a".repeat(50) + ".xml"), "");
+  const reportsUrl = pathToFileURL(join(process.cwd(), "build/src/runtime/reports.js")).href;
+  const coreUrl = pathToFileURL(join(process.cwd(), "build/src/core/evaluate.js")).href;
+  const source = "import {expandReportPaths} from " + JSON.stringify(reportsUrl) + ";" +
+    "import {evaluate} from " + JSON.stringify(coreUrl) + ";" +
+    "const result = await expandReportPaths(" + JSON.stringify(root) + ", ['out/*a*a*a*a*a*a*a*a*a*a*b.xml']);" +
+    "if (result.length !== 0) process.exit(1);" +
+    "const cfg = {watched:['out/*a*a*a*a*a*a*a*a*a*a*b.xml'],policy:{default:{minExecuted:2,maxDropPercent:0,identity:'off'},protectedSuites:[]}};" +
+    "const suite = {name:'unit',executed:1,skipped:0,tests:[]};" +
+    "evaluate({config:cfg,baseline:{schemaVersion:1,suites:[{name:'unit',executed:2,skipped:0}]},currentSuites:[suite],changedPaths:['out/'+'a'.repeat(50)+'.xml']});";
+  execFileSync(process.execPath, ["--input-type=module", "-e", source], { timeout: 3000 });
+});
+
+test("report cleanup refuses file aliases before deleting any report", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-protected-alias-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const baseline = join(root, "baseline.json");
+  const alias = join(root, "report.json");
+  const first = join(root, "first.xml");
+  await writeFile(baseline, "reviewed baseline");
+  await link(baseline, alias);
+  await writeFile(first, "old report");
+  await assert.rejects(cleanReports([first, alias], [baseline]), /overlaps/);
+  assert.equal(await readFile(baseline, "utf8"), "reviewed baseline");
+  assert.equal(await readFile(first, "utf8"), "old report");
+});
+
+test("overlapping reports cannot hide a drop in executed tests", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-overlapping-reports-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "runner.mjs"), `import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+mkdirSync("out", { recursive: true });
+const later = existsSync("later");
+const xml = names => '<testsuite name="unit">' + names.map(name => '<testcase name="' + name + '"/>').join('') + '</testsuite>';
+writeFileSync("out/a.xml", xml(later ? ["a", "new"] : ["a"]));
+if (!later) writeFileSync("out/b.xml", xml(["b", "c"]));
+`);
+  const configPath = join(root, ".exevra.yml");
+  await initialize({ configPath, command: "node runner.mjs", reportPath: ["out/a.xml", "out/*.xml"] });
+  await writeFile(join(root, "later"), "");
+  const result = await check({ configPath });
+  assert.equal(result.suites[0]?.executed, 2);
+  assert.ok(result.findings.some((finding) => finding.code === "SUITE_DROP_EXCEEDED"));
 });
 
 test("loadAggregatedReports rejects a symlinked shard report parent", async (t) => {
@@ -590,6 +786,43 @@ test("initialize writes a validated JUnit config and records its first baseline"
   assert.equal(config.policy.default.identity, "warn");
   assert.equal(config.policy.default.identityDetails, "counts");
   assert.equal(result.record.suites[0]?.executed, 10);
+});
+
+test("initialize reports a blocked initial policy instead of claiming readiness", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-init-skipped-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "runner.mjs"), "import { writeFileSync } from 'node:fs';\n" +
+    "writeFileSync('report.xml', '<testsuites><testsuite name=\"active\"><testcase name=\"ok\"/></testsuite><testsuite name=\"skipped\"><testcase name=\"later\"><skipped/></testcase></testsuite></testsuites>');\n");
+  await assert.rejects(initialize({ configPath: join(root, ".exevra.yml"), command: "node runner.mjs", reportPath: "report.xml" }),
+    (error: unknown) => error instanceof RuntimeError && /SUITE_BELOW_MINIMUM/.test(error.message) && /skipped/.test(error.message));
+  await readFile(join(root, ".exevra.yml"));
+  await readFile(join(root, ".exevra", "baseline.json"));
+  const configPath = join(root, ".exevra.yml");
+  await writeFile(configPath, (await readFile(configPath, "utf8")).replace("min_executed: 1", "min_executed: 0"));
+  assert.deepEqual((await check({ configPath })).findings, []);
+});
+
+test("initialize reports a baseline created during the test command without replacing it", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-init-race-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "runner.mjs"), "import { writeFileSync } from 'node:fs';\n" +
+    "writeFileSync('.exevra/baseline.json', 'existing');\n" +
+    "writeFileSync('report.xml', '<testsuite name=\"unit\"><testcase name=\"ok\"/></testsuite>');\n");
+  await assert.rejects(initialize({ configPath: join(root, ".exevra.yml"), command: "node runner.mjs", reportPath: "report.xml" }), /baseline already exists/);
+  assert.equal(await readFile(join(root, ".exevra", "baseline.json"), "utf8"), "existing");
+});
+
+test("initialize identifies an existing baseline without creating a config or running tests", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await rm(join(root, ".exevra.yml"));
+  const baselinePath = join(root, ".exevra", "baseline.json");
+  const original = await readFile(baselinePath, "utf8");
+  await assert.rejects(initialize({ configPath: join(root, ".exevra.yml"), command: "touch sentinel", reportPath: "report.xml" }),
+    (error: unknown) => error instanceof RuntimeError && /baseline already exists/.test(error.message) && !/REPORT_INVALID/.test(error.message));
+  assert.equal(await readFile(baselinePath, "utf8"), original);
+  await assert.rejects(readFile(join(root, ".exevra.yml")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(root, "sentinel")), { code: "ENOENT" });
 });
 
 test("check warns and continues for Maven filters, while off and non-Maven stay silent", async (t) => {
@@ -1158,7 +1391,7 @@ test("record writes raw IDs only for a matching identity names suite", async (t)
     namesConfig,
     (await readFile(join(root, ".exevra.yml"), "utf8")).replace(
       "max_drop_percent: 0",
-      "max_drop_percent: 0\n    identity_details: counts\n  protected_suites:\n    - name: unit names\n      match: ^unit$\n      min_executed: 1\n      max_drop_percent: 0\n      identity_details: names",
+      "max_drop_percent: 0\n    identity_details: counts\n  pattern_engine: re2\n  protected_suites:\n    - name: unit names\n      match: ^unit$\n      min_executed: 1\n      max_drop_percent: 0\n      identity_details: names",
     ),
   );
 
@@ -1533,6 +1766,66 @@ test("diff uses the original baseline snapshot even if the command overwrites th
     result.findings.some((finding) => finding.code === "SUITE_DROP_EXCEEDED"),
   );
   assert.equal(await readFile(join(root, ".exevra", "baseline.json"), "utf8"), "{not json");
+});
+
+test("check uses the reviewed baseline even if the command overwrites it", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mode(root, "reduced");
+  await writeFile(join(root, ".exevra.yml"), JSON.stringify({
+    version: 1, baseline: ".exevra/baseline.json",
+    command: "node -e " + JSON.stringify("require('node:fs').writeFileSync('.exevra/baseline.json', '{not json')") +
+      " && node tools/fake-junit-command.mjs artifacts/junit.xml",
+    reports: ["artifacts/junit.xml"],
+    policy: { default: { min_executed: 1, max_drop_percent: 0 } },
+  }));
+  const result = await check({ configPath: join(root, ".exevra.yml") });
+  assert.ok(result.findings.some((finding) => finding.code === "SUITE_DROP_EXCEEDED"));
+});
+
+test("changedFiles returns literal Unicode and newline filenames", async (t) => {
+  const root = await project("exevra-git-paths-");
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "-q");
+  git("config", "user.email", "exevra-test@example.invalid");
+  git("config", "user.name", "Exevra Test");
+  git("config", "commit.gpgsign", "false");
+  git("config", "core.hooksPath", "/dev/null");
+  await writeFile(join(root, ".exevra.yml"), (await readFile(join(root, ".exevra.yml"), "utf8")).replace("runner-config.json", "src/*"));
+  await writeFile(join(root, "initial"), "initial");
+  git("add", ".");
+  git("commit", "-qm", "initial");
+  const base = git("rev-parse", "HEAD").trim();
+  await mkdir(join(root, "src"));
+  await writeFile(join(root, "src", "café.txt"), "unicode");
+  await writeFile(join(root, "src", "line\nbreak.txt"), "newline");
+  git("add", ".");
+  git("commit", "-qm", "changes");
+  assert.deepEqual((await changedFiles(root, base)).sort(), ["src/café.txt", "src/line\nbreak.txt"].sort());
+  await mode(root, "reduced");
+  const result = await check({ configPath: join(root, ".exevra.yml"), baseRef: base });
+  assert.ok(result.findings.some((finding) => finding.code === "WATCHED_CONFIG_CHANGED_WITH_SIGNAL_DROP"));
+});
+
+test("changedFiles includes both sides of a renamed watched file", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "exevra-git-rename-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "-q");
+  git("config", "user.email", "exevra-test@example.invalid");
+  git("config", "user.name", "Exevra Test");
+  git("config", "commit.gpgsign", "false");
+  git("config", "core.hooksPath", "/dev/null");
+  await mkdir(join(root, "watched"));
+  await mkdir(join(root, "other"));
+  await writeFile(join(root, "watched", "config.txt"), "same content");
+  git("add", ".");
+  git("commit", "-qm", "initial");
+  const base = git("rev-parse", "HEAD").trim();
+  git("mv", "watched/config.txt", "other/config.txt");
+  git("commit", "-qm", "move");
+  assert.deepEqual((await changedFiles(root, base)).sort(), ["other/config.txt", "watched/config.txt"]);
 });
 
 test("record refuses symlinked baseline parents and baseline targets without touching outside files", async (t) => {

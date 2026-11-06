@@ -15,6 +15,7 @@ watched:
   - package.json
   - package-lock.json
 policy:
+  pattern_engine: re2
   default:
     min_executed: 1
     max_drop_percent: 0
@@ -37,11 +38,11 @@ maven:
   filter_policy: warn
 ```
 
-`version` must be `1`. `baseline` is the JSON baseline path. `command` is a non-empty Bash command. `reports` is a non-empty list of unique JUnit XML paths or filename patterns. A pattern may contain `*` in its filename, not its directory, and every matched XML file is checked. Literal report paths must be produced on every run. If all report entries are patterns, at least one must match; this lets `init --maven` work for Surefire-only, Failsafe-only, and combined Maven projects. `watched` is an optional list of paths matched as globs when a base ref is available.
+`version` must be `1`. `baseline` is the JSON baseline path. `command` is a non-empty Bash command. `reports` is a non-empty list of unique JUnit XML paths or filename patterns. A pattern may contain `*` in its filename, not its directory, and every matched XML file is checked. Matching symbolic links are rejected before the test command runs. Aliases of the same physical file, including hard links, are counted once per project or shard; all matched paths are still removed before the test command. Literal report paths must be produced on every run. If all report entries are patterns, at least one must match; this lets `init --maven` work for Surefire-only, Failsafe-only, and combined Maven projects. `watched` is an optional list of paths matched as globs when a base ref is available.
 
 `policy.default` is required. Its `min_executed` is a non-negative integer and `max_drop_percent` is a number from 0 through 100. `identity` accepts `off`, `warn`, or `enforce` and defaults to `warn`; `identity_details` accepts `counts` or `names` and defaults to `counts`.
 
-`policy.protected_suites` is optional. Every item needs a non-empty `name`, a valid regular-expression `match`, and the same policy fields as `default`. Exevra selects the first protected-suite policy whose regular expression matches a suite name; otherwise it uses `default`.
+`policy.protected_suites` is optional. Every item needs a non-empty `name`, a supported regular-expression `match`, and the same policy fields as `default`. Exevra selects the first protected-suite policy whose regular expression matches a suite name; otherwise it uses `default`. When protected suites are present, `policy.pattern_engine: re2` is required to confirm that the patterns were reviewed for RE2 matching. Lookaround assertions and backreferences are not supported. RE2 also treats Unicode characters and whitespace differently from JavaScript regular expressions; review and test your patterns against your suite names before adding the marker.
 
 When `maven.modules` is `auto`, Exevra follows literal `<module>` declarations from `pom.xml` files, recursively visits declared child POMs, and expands the configured standard Surefire/Failsafe report patterns in each non-aggregator module. A root-only project is represented by the same Maven marker and is checked as one module. A module may produce either report family or both. Modules without Maven test source files or current-build compiled test classes are not required to produce a report; a test-bearing module producing neither report family yields `REPORT_MISSING`. A matched report that cannot be read yields `REPORT_UNREADABLE`. Profiles, properties, parent inheritance, and custom report directories are not evaluated. Source detection recognizes common JVM test-source extensions under `src/test`; compiled `.class` files under `target/test-classes` from the current build also mark a module as test-bearing, and a direct non-profile `testOutputDirectory` declaration keeps it report-bearing.
 
@@ -49,7 +50,7 @@ When `maven.modules` is `auto`, Exevra follows literal `<module>` declarations f
 
 The detector recognizes `=value`, a following value, and value-less flags where applicable at lexical token-like boundaries. Findings contain only the matched flag names; selector values and test names are never included. This is not complete Bash or Maven parsing and does not resolve shell expansion, aliases, profiles, properties, plugins, or custom Maven configuration. Non-Maven configurations are unchanged.
 
-For Gradle multi-project builds, `gradle.modules: auto` reads literal project declarations from `settings.gradle` or `settings.gradle.kts` and expands each configured report path relative to the root and every included project. Each project must produce a report, including the root; for a root project without tests, use explicit report configuration. Standard onboarding uses `build/test-results/test/TEST-*.xml`. Custom project directories assigned with `project(...).projectDir = file(...)` are supported. A missing or unreadable project report is retained as `REPORT_MISSING` or `REPORT_UNREADABLE`; a project with no settings file uses the root-only behavior. Maven and Gradle markers cannot be configured together.
+For Gradle multi-project builds, `gradle.modules: auto` reads literal project declarations from `settings.gradle` or `settings.gradle.kts` and expands each configured report path relative to the root, included projects, and their intermediate parent projects. The root and explicitly included projects must produce a report; for a root project without tests, use explicit report configuration. An intermediate parent without `src/test` can omit a report, but any report it produces is checked. For intermediate parents with custom test source directories, use explicit report configuration if a missing report must be detected on the first run. Standard onboarding uses `build/test-results/test/TEST-*.xml`. Custom project directories assigned with `project(...).projectDir = file(...)` are supported. A missing or unreadable required project report is retained as `REPORT_MISSING` or `REPORT_UNREADABLE`; a project with no settings file uses the root-only behavior. Maven and Gradle markers cannot be configured together.
 
 ```yaml
 gradle:

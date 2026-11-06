@@ -533,6 +533,19 @@ test("npm publish verifies Node framework integrations first", async () => {
   }
 });
 
+test("npm publish requires real pnpm and pytest integration checks first", async () => {
+  const workflow = parse(await readFile(join(process.cwd(), ".github/workflows/publish.yml"), "utf8"));
+  const steps = workflow.jobs.publish.steps as { run?: string; if?: string; "continue-on-error"?: boolean }[];
+  const publishIndex = steps.findIndex((step) => step.run?.trim() === "npm publish");
+  assert.notEqual(publishIndex, -1);
+  for (const testFile of ["test/integration/pnpm.test.mjs", "test/integration/pytest.test.mjs"]) {
+    const index = steps.findIndex((step) => step.run?.includes(`node --test ${testFile}`));
+    assert.ok(index >= 0 && index < publishIndex, `${testFile} must run before publish`);
+    assert.equal(steps[index]?.if, undefined);
+    assert.notEqual(steps[index]?.["continue-on-error"], true);
+  }
+});
+
 test("Node integration workflows share the composite fixture verification", async () => {
   const action = await readFile(
     join(process.cwd(), ".github/actions/node-integration/action.yml"),

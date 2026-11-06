@@ -186,6 +186,7 @@ test("compiled CLI prints help for standard help flags", async (t) => {
     "  init [--command <command> --report <path>]\n" +
     "  init --maven\n" +
     "  init --gradle\n" +
+    "  init --pytest [--command <command>]\n" +
     "  record [--config <path>] [--write]\n" +
     "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
     "  doctor [--config <path>] [--format text|json|github-actions]\n" +
@@ -393,6 +394,41 @@ test("compiled CLI initializes Gradle projects and records root and child suites
   assert.deepEqual(baseline.suites.map((suite) => suite.name), ["app", "root"]);
 });
 
+test("compiled CLI initializes and checks pytest projects with default and custom commands", async (t) => {
+  for (const custom of [false, true]) {
+    const root = await project();
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await rm(join(root, ".exevra.yml"), { force: true });
+    await rm(join(root, ".exevra"), { recursive: true, force: true });
+    const bin = join(root, "bin");
+    await mkdir(bin);
+    const executable = custom ? "custom-pytest" : "python3";
+    await writeFile(join(bin, executable),
+      "#!/usr/bin/env sh\n" +
+      (custom ? "" : '[ "$1" = "-m" ] && [ "$2" = "pytest" ] || exit 3\nshift 2\n') +
+      '[ "$1" = "--junitxml=artifacts/junit.xml" ] || exit 4\n' +
+      "node tools/fake-junit-command.mjs artifacts/junit.xml\n");
+    await chmod(join(bin, executable), 0o755);
+    const environment = { PATH: `${bin}:${process.env.PATH ?? ""}` };
+    const args = custom ? ["init", "--pytest", "--command", "custom-pytest"] : ["init", "--pytest"];
+    const initialized = await runWithEnvironment(root, environment, ...args);
+    assert.equal(initialized.code, 0, initialized.stderr);
+    await readFile(join(root, ".exevra", "baseline.json"));
+    const checked = await runWithEnvironment(root, environment, "check");
+    assert.equal(checked.code, 0, checked.stderr);
+  }
+});
+
+test("compiled CLI rejects conflicting pytest initialization options", async (t) => {
+  const root = await project();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const args of [["--pytest", "--maven"], ["--pytest", "--gradle"], ["--pytest", "--report", "report.xml"], ["--pytest", "--pytest"]]) {
+    const result = await run(root, "init", ...args);
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /Invalid invocation/);
+  }
+});
+
 test("compiled CLI initializes a Node project without init flags", async (t) => {
   const root = await nodeProject();
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -485,6 +521,19 @@ test("compiled CLI configures JUnit output for Vitest without flags", async (t) 
     /command: npm test -- --reporter=junit --outputFile=artifacts\/junit\.xml/,
   );
   await readFile(join(root, ".exevra", "baseline.json"), "utf8");
+});
+
+test("compiled CLI forwards Vitest reporter options through pnpm", async (t) => {
+  const root = await autoVitestProject();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: 9\n");
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "pnpm"), '#!/usr/bin/env sh\n[ "$1" = "test" ] || exit 3\nshift\n[ "$1" != "--" ] || exit 4\nexec node_modules/.bin/vitest "$@"\n');
+  await chmod(join(bin, "pnpm"), 0o755);
+  const result = await runWithEnvironment(root, { PATH: `${bin}:${process.env.PATH ?? ""}` }, "init");
+  assert.equal(result.code, 0, result.stderr);
+  await readFile(join(root, ".exevra", "baseline.json"));
 });
 
 test("compiled CLI requires an explicit Vitest JUnit output path", async (t) => {
@@ -1111,6 +1160,7 @@ test("compiled CLI exposes deterministic diff output and exit modes", async (t) 
           max_drop_percent: 100,
           identity: "off",
         },
+        pattern_engine: "re2",
         protected_suites: [
           {
             name: "unit",

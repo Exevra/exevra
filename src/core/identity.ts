@@ -1,3 +1,4 @@
+import { RE2JS } from "re2js";
 import type { Config, EvaluationResult, SuitePolicy } from "./model.js";
 
 export interface IdentityDiff {
@@ -12,12 +13,15 @@ declare module "./model.js" {
   }
 }
 
+export const compileSuitePattern = (pattern: string): RE2JS =>
+  RE2JS.compile(RE2JS.translateRegExp(pattern));
+
 export const resolveSuitePolicy = (
   config: Config,
   suiteName: string,
 ): SuitePolicy =>
   config.policy.protectedSuites.find((item) =>
-    new RegExp(item.match).test(suiteName),
+    compileSuitePattern(item.match).test(suiteName),
   ) ?? config.policy.default;
 
 export interface MultisetDifference {

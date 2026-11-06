@@ -6,6 +6,7 @@ export interface GradleModule {
   path: string;
   projectPath: string;
   aggregator: boolean;
+  hasTestSources?: boolean;
 }
 
 const relativeModulePath = (root: string, path: string): string => {
@@ -115,18 +116,45 @@ export const discoverGradleModules = async (
 
   const source = withoutComments(settings.source);
   const directories = customProjectDirectories(source);
+  const included = includedProjects(source);
+  const explicit = new Set(included);
+  const projects = new Set(included);
+  for (const projectPath of included) {
+    const parts = projectPath.slice(1).split(":");
+    for (let index = 1; index < parts.length; index += 1)
+      projects.add(`:${parts.slice(0, index).join(":")}`);
+  }
   const visited = new Set<string>([rootPath]);
   const modules: GradleModule[] = [];
-  for (const projectPath of includedProjects(source)) {
+  for (const projectPath of projects) {
     const configuredPath = directories.get(projectPath) ?? modulePathFor(projectPath);
+    if (!explicit.has(projectPath)) {
+      try {
+        await lstat(safeModuleRoot(rootPath, configuredPath));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+    }
     const moduleRoot = await assertModulePath(rootPath, configuredPath);
     const canonicalRoot = await realpath(moduleRoot);
     if (visited.has(canonicalRoot)) continue;
     visited.add(canonicalRoot);
+    let hasTestSources: boolean | undefined;
+    if (!explicit.has(projectPath)) {
+      try {
+        await lstat(join(moduleRoot, "src", "test"));
+        hasTestSources = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        hasTestSources = false;
+      }
+    }
     modules.push({
       path: relativeModulePath(rootPath, moduleRoot),
       projectPath,
       aggregator: false,
+      ...(hasTestSources === undefined ? {} : { hasTestSources }),
     });
   }
   if (modules.length === 0)

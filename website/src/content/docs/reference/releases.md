@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.5.0
+
+Adds pytest initialization and strengthens report collection, cleanup, and watched-path checks. Protected-suite patterns now use RE2; projects with protected suites must review their patterns and set `policy.pattern_engine: re2` before upgrading. Lookaround and backreferences are unsupported, and Unicode matching can differ.
+
 ## v0.4.5
 
 Updates dependencies and GitHub Actions, and strengthens report handling, path validation, test identity checks, and output safety. The release also automates version references and release creation.

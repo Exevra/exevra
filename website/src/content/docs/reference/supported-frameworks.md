@@ -14,6 +14,7 @@ These integrations have Exevra setup paths that discover the runner and configur
 | Vitest | `npx exevra init` adds JUnit reporter flags without editing `package.json` |
 | Maven Surefire/Failsafe | `npx exevra init --maven` reads the standard report directories in the root and declared child modules; writes `filter_policy: warn` |
 | Gradle | `npx exevra init --gradle` reads standard JUnit reports in the root and declared projects |
+| pytest | `npx exevra init --pytest` runs pytest and configures JUnit output |
 
 ## Explicit JUnit configuration
 
@@ -25,7 +26,6 @@ Other ecosystems work when their JUnit reporter or converter is configured expli
 | Playwright | JUnit reporter | Explicit command/config |
 | Mocha | `mocha-junit-reporter` | Explicit command/config |
 | Cypress | JUnit reporter/plugin | Explicit command/config |
-| pytest | `--junitxml` | Explicit command/config |
 | Go test | `go-junit-report` or equivalent | Explicit converter |
 | .NET xUnit/NUnit/MSTest | JUnit-compatible logger | Explicit logger/config |
 | PHPUnit | `--log-junit` | Explicit command/config |

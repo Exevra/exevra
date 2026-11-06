@@ -33,7 +33,7 @@ For a Node project with a `test` script, initialize without wiring reporter flag
 npx exevra init
 ```
 
-Exevra detects the package manager and framework, safely configures JUnit output for Vitest, and records the first baseline without editing `package.json`. If the reporter cannot be detected or configured, use the explicit form below.
+Exevra detects the package manager and framework, safely configures JUnit output for Vitest, and records the first baseline without editing `package.json`. If a suite violates the generated policy, initialization reports it for review. If the reporter cannot be detected or configured, use the explicit form below.
 
 For an explicit JUnit-producing command:
 
@@ -42,6 +42,14 @@ npx exevra init \
   --command "npm test -- --reporter=junit --outputFile=artifacts/junit.xml" \
   --report artifacts/junit.xml
 ```
+
+For a Python project with pytest installed in the active environment:
+
+```sh
+npx exevra init --pytest
+```
+
+This runs `python3 -m pytest --junitxml=artifacts/junit.xml` and records the first baseline. To use another environment, pass the pytest invocation without JUnit flags, for example `npx exevra init --pytest --command "poetry run pytest"`.
 
 For a Maven project using standard Surefire and/or Failsafe report directories:
 
@@ -93,11 +101,14 @@ npx exevra record --config .exevra.yml --write
 
 Exevra is JUnit XML based, not tied to one test framework. It runs the configured POSIX command, reads the fresh reports it produces, and compares them with the reviewed baseline.
 
+Protected-suite policy patterns use RE2 syntax and require `policy.pattern_engine: re2` after review. Lookaround and backreferences are unsupported, and Unicode matching can differ from earlier releases. See the [upgrade guide](https://exevra.github.io/exevra/guides/upgrading/).
+
 Built-in setup:
 
 - **Maven Surefire/Failsafe** — `npx exevra init --maven` detects the standard report directories in the root and declared child modules.
-- **Gradle** — `npx exevra init --gradle` detects `build/test-results/test/TEST-*.xml` in the root and declared projects.
+- **Gradle** — `npx exevra init --gradle` detects `build/test-results/test/TEST-*.xml` in the root, declared projects, and intermediate parent projects.
 - **Vitest** — `npx exevra init` detects Vitest and adds its JUnit reporter flags without editing `package.json`.
+- **pytest** — `npx exevra init --pytest` runs pytest and configures its JUnit report.
 
 Other ecosystems work when their JUnit reporter or converter is configured explicitly:
 
@@ -107,7 +118,6 @@ Other ecosystems work when their JUnit reporter or converter is configured expli
 | Playwright | JUnit reporter | Explicit command/config |
 | Mocha | `mocha-junit-reporter` | Explicit command/config |
 | Cypress | JUnit reporter/plugin | Explicit command/config |
-| pytest | `--junitxml` | Explicit command/config |
 | Go test | `go-junit-report` or equivalent | Explicit converter |
 | .NET xUnit/NUnit/MSTest | JUnit-compatible logger | Explicit logger/config |
 | PHPUnit | `--log-junit` | Explicit command/config |
@@ -152,7 +162,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.4.5
+      - uses: Exevra/exevra@v0.5.0
         with:
           config: .exevra.yml
           mode: enforce

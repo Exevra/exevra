@@ -47,9 +47,19 @@ npx exevra init --gradle
 
 This runs `gradle test` and reads `build/test-results/test/TEST-*.xml` for the root project and every project declared by `settings.gradle` or `settings.gradle.kts`. A project without a settings file uses root-only behavior. Custom project directories assigned with `project(...).projectDir = file(...)` are supported; custom report locations are not inferred. Missing or unreadable project reports remain visible as integrity findings.
 
+For pytest, install pytest in your Python environment and run:
+
+```sh
+npx exevra init --pytest
+```
+
+This uses `python3 -m pytest --junitxml=artifacts/junit.xml`. For a different environment, pass a pytest invocation without JUnit flags, such as `npx exevra init --pytest --command "poetry run pytest"`. Exevra appends the report option; use the explicit `--command` and `--report` form for a different report path.
+
 For v0, `init` accepts ASCII characters only in the configuration filename and report path. Your workspace directory may use non-ASCII characters. This keeps configuration and report paths unambiguous on filesystems with Unicode aliases.
 
 If the first test run fails, produces no valid JUnit report, or reports zero executed tests, `.exevra.yml` remains, but `.exevra/baseline.json` is not created. Fix the test command, then create the baseline from that configuration.
+
+If the baseline is recorded but a suite violates the generated policy, initialization reports the affected suite and keeps both files. Review the suite and its policy, then run `npx exevra check`; do not lower the minimum without reviewing why the suite did not execute. If a baseline already exists before initialization, Exevra leaves it untouched and does not create a new configuration.
 
 ```sh
 npx exevra record --config .exevra.yml

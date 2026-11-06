@@ -1,10 +1,10 @@
 import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { stringify } from "yaml";
-import { loadConfig, type GradleConfig, type MavenConfig } from "../core/index.js";
+import { evaluate, loadConfig, type GradleConfig, type MavenConfig } from "../core/index.js";
 import { discoverGradleModules } from "./gradle.js";
 import { discoverMavenModules } from "./maven.js";
-import { record, type RecordResult } from "./record.js";
+import { BaselineExistsError, record, type RecordResult } from "./record.js";
 import {
   assertSafeInRootPath,
   resolveInRoot,
@@ -165,7 +165,7 @@ const detectNodeProject = async (
   return {
     command:
       configuredReportPath === undefined
-        ? `${testCommand} -- --reporter=junit --outputFile=${defaultNodeReportPath}`
+        ? `${testCommand}${packageManager === "npm" ? " --" : ""} --reporter=junit --outputFile=${defaultNodeReportPath}`
         : testCommand,
     framework,
     packageManager,
@@ -304,6 +304,8 @@ export const initialize = async ({
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  if (await fileExists(baselinePath))
+    throw new RuntimeError("baseline already exists; review and reuse it or remove it explicitly before initializing");
   const file = await open(target, "wx", 0o600);
   try {
     await file.writeFile(source, "utf8");
@@ -313,7 +315,9 @@ export const initialize = async ({
   let recordResult: RecordResult;
   try {
     recordResult = await record({ configPath: target });
-  } catch {
+  } catch (error) {
+    if (error instanceof BaselineExistsError)
+      throw new RuntimeError("baseline already exists; review and reuse it or remove it explicitly before initializing");
     throw new RuntimeError("initial baseline recording failed: REPORT_INVALID");
   }
   if (recordResult.findings.length > 0) {
@@ -322,6 +326,12 @@ export const initialize = async ({
     ].sort();
     throw new RuntimeError(`initial baseline recording failed: ${codes.join(", ")}`);
   }
+  const blocked = evaluate({ config, baseline: recordResult.baseline, currentSuites: recordResult.suites })
+    .findings.filter((finding) => finding.severity === "error");
+  if (blocked.length > 0)
+    throw new RuntimeError(
+      `initial baseline recorded but policy blocks the run: ${blocked.map((finding) => `[${finding.code}] ${finding.message}`).join("; ")} Review the suite policy, then run exevra check.`,
+    );
   return { configPath: target, baselinePath, record: recordResult };
 };
 

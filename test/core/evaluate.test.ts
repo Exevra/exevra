@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 import test from "node:test";
 import { loadConfig } from "../../src/core/config.js";
 import { evaluate } from "../../src/core/evaluate.js";
@@ -24,6 +27,15 @@ const config: Config = {
 const suites = (name: string, executed: number): CanonicalSuite[] => [
   { name, executed, skipped: 0, tests: [] },
 ];
+
+test("protected-suite matching handles hostile names in bounded time", () => {
+  const moduleUrl = pathToFileURL(resolve("build/src/core/identity.js")).href;
+  const source = `import { resolveSuitePolicy } from ${JSON.stringify(moduleUrl)};
+    const config = { policy: { default: { minExecuted: 1 }, protectedSuites: [{ match: '^(a+)+$', minExecuted: 2 }] } };
+    if (resolveSuitePolicy(config, 'a'.repeat(100) + '!').minExecuted !== 1) process.exit(1);
+    if (resolveSuitePolicy(config, 'aaaa').minExecuted !== 2) process.exit(1);`;
+  execFileSync(process.execPath, ["--input-type=module", "-e", source], { timeout: 3000 });
+});
 const baseline = (executed: number, name = "unit"): Baseline => ({
   schemaVersion: 1,
   generatedAt: "2026-08-11T00:00:00.000Z",
@@ -70,6 +82,7 @@ const protectedIdentityConfig = (
         max_drop_percent: 0,
         identity,
       },
+      pattern_engine: "re2",
       protected_suites: [
         {
           name: "unit",
@@ -195,6 +208,16 @@ test("emits watched-config signal only with an execution breach", () => {
     }),
     [],
   );
+});
+
+test("watched wildcards match changed filenames with line breaks", () => {
+  const result = evaluate({
+    config: { ...config, watched: ["src/*"] },
+    baseline: baseline(10),
+    currentSuites: suites("unit", 8),
+    changedPaths: ["src/line\nbreak.txt"],
+  });
+  assert.ok(result.findings.some((finding) => finding.code === "WATCHED_CONFIG_CHANGED_WITH_SIGNAL_DROP"));
 });
 
 test("reports a missing or incompatible baseline before comparison", () => {
@@ -423,6 +446,7 @@ test("protected suite detail policy overrides the default", () => {
           max_drop_percent: 0,
           identity_details: "counts",
         },
+        pattern_engine: "re2",
         protected_suites: [
           {
             name: "unit names",

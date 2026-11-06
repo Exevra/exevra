@@ -6,6 +6,7 @@ import type {
   Finding,
 } from "./model.js";
 import { aggregateSuites, testIdHashes, testIdsHash } from "./junit.js";
+import { compileGlob } from "./glob.js";
 import {
   multisetDifference,
   resolveSuitePolicy,
@@ -31,12 +32,7 @@ const finding = (
   ...extra,
 });
 const matches = (pattern: string, path: string): boolean =>
-  new RegExp(
-    `^${pattern
-      .split("*")
-      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join(".*")}$`,
-  ).test(path);
+  compileGlob(pattern).test(path);
 
 export const evaluate = ({
   config,

@@ -99,6 +99,7 @@ const usage =
   "  init [--command <command> --report <path>]\n" +
   "  init --maven\n" +
   "  init --gradle\n" +
+  "  init --pytest [--command <command>]\n" +
   "  record [--config <path>] [--write]\n" +
   "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
   "  doctor [--config <path>] [--format text|json|github-actions]\n" +
@@ -148,19 +149,14 @@ const parse = (arguments_: readonly string[]): Invocation => {
       write = true;
       continue;
     }
-    if (argument === "--maven" && command === "init") {
-      if (values.has(argument)) throw new InvocationError("--maven may be supplied once");
-      values.set(argument, "true");
-      continue;
-    }
-    if (argument === "--gradle" && command === "init") {
-      if (values.has(argument)) throw new InvocationError("--gradle may be supplied once");
+    if (command === "init" && (argument === "--maven" || argument === "--gradle" || argument === "--pytest")) {
+      if (values.has(argument)) throw new InvocationError(`${argument} may be supplied once`);
       values.set(argument, "true");
       continue;
     }
     const allowed =
       command === "init"
-        ? new Set(["--config", "--command", "--report", "--maven", "--gradle"])
+        ? new Set(["--config", "--command", "--report", "--maven", "--gradle", "--pytest"])
         : command === "record"
         ? new Set(["--config"])
         : command === "check"
@@ -177,8 +173,24 @@ const parse = (arguments_: readonly string[]): Invocation => {
   }
   const configPath = values.get("--config") ?? ".exevra.yml";
   if (command === "init") {
+    if (values.has("--pytest") && (values.has("--maven") || values.has("--gradle")))
+      throw new InvocationError("--pytest cannot be combined with --maven or --gradle");
     if (values.has("--maven") && values.has("--gradle"))
       throw new InvocationError("--maven and --gradle cannot be combined");
+    if (values.has("--pytest")) {
+      if (values.has("--report"))
+        throw new InvocationError("--pytest cannot be combined with --report");
+      const testCommand = values.get("--command") ?? "python3 -m pytest";
+      if (testCommand.trim() === "")
+        throw new InvocationError("--command must not be empty");
+      return {
+        command,
+        configPath,
+        mode: "explicit",
+        testCommand: `${testCommand} --junitxml=artifacts/junit.xml`,
+        reportPaths: ["artifacts/junit.xml"],
+      };
+    }
     if (values.get("--maven") === "true") {
       if (values.has("--command") || values.has("--report"))
         throw new InvocationError("--maven cannot be combined with --command or --report");

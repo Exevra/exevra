@@ -139,6 +139,7 @@ test("defaults and parses identity detail policy", () => {
       ...valid,
       policy: {
         default: { min_executed: 1, max_drop_percent: 2 },
+        pattern_engine: "re2",
         protected_suites: [
           {
             name: "unit",
@@ -204,6 +205,7 @@ test("allows protected suites to override the default identity policy", () => {
         max_drop_percent: 2,
         identity: "off",
       },
+      pattern_engine: "re2",
       protected_suites: [
         {
           name: "unit",
@@ -252,6 +254,7 @@ test("rejects invalid policy bounds and protected-suite patterns", () => {
         ...valid,
         policy: {
           ...valid.policy,
+          pattern_engine: "re2",
           protected_suites: [
             { name: "bad", match: "(", min_executed: 1, max_drop_percent: 0 },
           ],
@@ -259,6 +262,28 @@ test("rejects invalid policy bounds and protected-suite patterns", () => {
       }),
     CoreValidationError,
   );
+});
+
+test("rejects policy patterns unsupported by the safe matcher", () => {
+  for (const match of ["(?=unit)", "(unit)\\1"]) {
+    assert.throws(() => loadConfig({
+      ...valid,
+      policy: { ...valid.policy, pattern_engine: "re2", protected_suites: [{ name: "unsupported", match, min_executed: 1, max_drop_percent: 0 }] },
+    }), /valid supported regular expression/);
+  }
+});
+
+test("protected-suite policies require an explicit RE2 migration", () => {
+  const suite = { name: "strict", match: "^..$", min_executed: 5, max_drop_percent: 0 };
+  assert.throws(() => loadConfig({
+    ...valid, policy: { ...valid.policy, protected_suites: [suite] },
+  }), /pattern_engine: re2/);
+  assert.equal(loadConfig({
+    ...valid, policy: { ...valid.policy, pattern_engine: "re2", protected_suites: [suite] },
+  }).policy.protectedSuites[0]?.match, "^..$");
+  assert.throws(() => loadConfig({
+    ...valid, policy: { ...valid.policy, pattern_engine: "other" },
+  }), /pattern_engine must be re2/);
 });
 
 test("rejects report paths that escape the configuration root", () => {

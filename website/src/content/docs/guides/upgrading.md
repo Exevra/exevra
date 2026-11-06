@@ -16,10 +16,24 @@ npm install --save-dev @exevra-dev/cli@latest
 If a workflow uses the GitHub Action, update its versioned reference:
 
 ```yaml
-- uses: Exevra/exevra@v0.4.5
+- uses: Exevra/exevra@v0.5.0
 ```
 
 Keep `uses: ./` only for testing a checked-out copy of Exevra.
+
+## Migrate protected-suite patterns
+
+Version 0.5.0 uses RE2 to match protected-suite patterns safely. If your configuration has `policy.protected_suites`, review each pattern against your suite names and add `pattern_engine: re2` under `policy`. Lookaround assertions and backreferences are unsupported, and Unicode and whitespace matching can differ from earlier JavaScript matching. Configurations without protected suites need no marker.
+
+Reports that refer to the same physical file through multiple paths are counted once per project or shard. If an earlier baseline counted such aliases more than once, review the corrected counts with `diff` and update the baseline only after confirming the intended test coverage.
+
+Gradle discovery also reads reports from intermediate parent projects, such as `:services` when `:services:api` is included. Review newly detected suites with `diff`, then update the baseline after confirming their expected coverage.
+
+```yaml
+policy:
+  pattern_engine: re2
+  # Keep your existing default and protected_suites rules here.
+```
 
 ## Adopt the new workflows
 
