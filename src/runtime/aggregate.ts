@@ -3,7 +3,7 @@ import {
   evaluate,
   type Finding,
 } from "../core/index.js";
-import type { CheckResult } from "./check.js";
+import { compareSuiteCounts, type CheckResult } from "./check.js";
 import { loadRuntimeConfig, readBaselineIfPresent } from "./load.js";
 import { RuntimeError } from "./paths.js";
 import { loadAggregatedReports } from "./reports.js";
@@ -71,5 +71,5 @@ export const aggregate = async ({
     currentSuites: suites,
     changedPaths: [],
   });
-  return { ...result, suites, notices };
+  return { ...result, suites, notices, suiteComparisons: compareSuiteCounts(baseline, suites) };
 };

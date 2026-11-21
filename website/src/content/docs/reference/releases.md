@@ -3,6 +3,10 @@ title: Releases
 description: Track the implemented behavior in Exevra v0 releases.
 ---
 
+## v0.6.0
+
+Adds a GitHub Actions run report with suite comparisons and a guided baseline review flow. The new `propose` and `accept` commands let users review and accept a candidate from one test run, with freshness checks and explicit generated-output exclusions. Updates root and documentation dependencies and GitHub Actions.
+
 ## v0.5.0
 
 Adds pytest initialization and strengthens report collection, cleanup, and watched-path checks. Protected-suite patterns now use RE2; projects with protected suites must review their patterns and set `policy.pattern_engine: re2` before upgrading. Lookaround and backreferences are unsupported, and Unicode matching can differ.

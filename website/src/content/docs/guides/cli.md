@@ -3,6 +3,8 @@ title: CLI
 description: Install the CLI, then initialize, record, check, doctor, diff, or aggregate a baseline from the command line.
 ---
 
+To review the exact baseline produced by a single test run, run `npx exevra propose`. It shows the baseline changes and findings and writes a candidate next to the baseline with a `.candidate` suffix. After reviewing the output, run `npx exevra accept --fingerprint <fingerprint>` using the printed fingerprint. Acceptance does not rerun tests; Exevra rejects changed project files during the test run or before acceptance. If the test command updates generated files, use `--exclude-generated build/generated`; repeat this option for additional directories. **Excluded directories are not checked for source changes**, so exclude only outputs, never test inputs. The snapshot includes ignored files and dependencies, but excludes Git metadata, the candidate, configured reports, redirected command output, Python `__pycache__` and `.pytest_cache` directories, and the Vitest `node_modules/.vite` cache. External file symlink targets are checked; external directory symlinks and special files are rejected. Environment variables and other files outside the configuration root are not captured; make a fresh proposal if those inputs change. Snapshotting may take time for large projects. Remove the candidate explicitly before proposing another.
+
 Install the CLI as a development dependency in the repository you want to protect.
 
 ```sh

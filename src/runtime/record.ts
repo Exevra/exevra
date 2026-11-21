@@ -21,6 +21,7 @@ export interface RecordOptions {
   configPath: string;
   write?: boolean;
   generatedAt?: string;
+  prepare?: boolean;
 }
 export interface RecordResult {
   baseline: Baseline;
@@ -34,7 +35,7 @@ export class BaselineExistsError extends RuntimeError {
   }
 }
 
-const atomicWriteBaseline = async (
+export const atomicWriteBaseline = async (
   path: string,
   contents: string,
   overwrite: boolean,
@@ -64,6 +65,7 @@ export const record = async ({
   configPath,
   write = false,
   generatedAt = new Date().toISOString(),
+  prepare = false,
 }: RecordOptions): Promise<RecordResult> => {
   const loaded = await loadRuntimeConfig(configPath);
   const filterFindings = loaded.config.maven
@@ -92,7 +94,7 @@ export const record = async ({
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath]);
+  await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath, `${loaded.baselinePath}.candidate`]);
   const commandStartedAt = Date.now();
   const command = await runConfiguredCommand(
     loaded.root,
@@ -138,11 +140,9 @@ export const record = async ({
       };
     }),
   };
-  await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
-  await atomicWriteBaseline(
-    loaded.baselinePath,
-    serializeBaseline(baseline),
-    write,
-  );
+  if (!prepare) {
+    await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
+    await atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), write);
+  }
   return { baseline, suites, findings };
 };

@@ -2,6 +2,7 @@ import type {
   BaselineDiff,
   CanonicalSuite,
   CheckResult,
+  Baseline,
   Finding,
 } from "../core/index.js";
 import { compareBaseline, evaluate } from "../core/index.js";
@@ -27,6 +28,12 @@ interface CheckSnapshot extends CheckResult {
 interface RunCheckContext {
   loaded?: Awaited<ReturnType<typeof loadRuntimeConfig>>;
 }
+export const compareSuiteCounts = (baseline: Baseline | undefined, suites: readonly CanonicalSuite[]): NonNullable<CheckResult["suiteComparisons"]> | undefined => {
+  if (!baseline || baseline.schemaVersion !== 1) return undefined;
+  const before = new Map(baseline.suites.map((suite) => [suite.name, suite.executed]));
+  const after = new Map(suites.map((suite) => [suite.name, suite.executed]));
+  return [...new Set([...before.keys(), ...after.keys()])].sort().map((name) => ({ name, baseline: before.get(name) ?? null, current: after.get(name) ?? null }));
+};
 const runCheck = async ({
   configPath,
   baseRef,
@@ -54,7 +61,7 @@ const runCheck = async ({
   const baseline = await readBaselineIfPresent(loaded.root, loaded.baselinePath);
   await cleanReports(
     await expandConfiguredReportPaths(loaded.root, loaded.config),
-    [loaded.configPath, loaded.baselinePath],
+    [loaded.configPath, loaded.baselinePath, `${loaded.baselinePath}.candidate`],
   );
   const commandStartedAt = Date.now();
   const command = await runConfiguredCommand(
@@ -135,6 +142,7 @@ const runCheck = async ({
     identityDiffs: result.identityDiffs,
     suites,
     notices,
+    suiteComparisons: compareSuiteCounts(baseline, suites),
     config: loaded.config,
     baseline,
   };
