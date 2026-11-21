@@ -191,7 +191,7 @@ test("GitHub report shows escaped suite comparisons without exposing test names"
   assert.match(report, /EXEVRA BLOCKED/);
   assert.match(report, /payments &lt;script&gt;/);
   assert.match(report, /<td>10<\/td><td>8<\/td><td>-2<\/td>/);
-  assert.doesNotMatch(report, /secret-test|private message|private details|payments <script>/);
+  assert.doesNotMatch(report, /secret-test|private message|private details|payments <script>/i);
 });
 
 test("GitHub report identifies new and removed suites and advisory findings", () => {
@@ -205,9 +205,9 @@ test("GitHub report identifies new and removed suites and advisory findings", ()
 
 test("GitHub report explains a changed execution contract without exposing arbitrary notices", () => {
   const notice = "The current command or report configuration differs from the reviewed baseline.";
-  const summary = renderGitHubSummary({ findings: [], notices: [notice, "private notice <script>"] });
+  const summary = renderGitHubSummary({ findings: [], notices: [notice, "private notice <SCRIPT>"] });
   assert.match(summary, /current command or report configuration differs/);
-  assert.doesNotMatch(summary, /private notice|<script>/);
+  assert.doesNotMatch(summary, /private notice|<script>/i);
 });
 
 test("renderers preserve aggregate findings in every output contract", () => {
