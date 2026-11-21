@@ -126,6 +126,7 @@ export interface CheckResult {
   identityDiffs: IdentityDiff[];
   suites: CanonicalSuite[];
   notices: string[];
+  suiteComparisons?: { name: string; baseline: number | null; current: number | null }[];
 }
 
 export type DoctorCheckStatus =

@@ -13,6 +13,7 @@ export interface RenderInput {
   suites?: readonly CanonicalSuite[];
   changes?: BaselineDiff;
   checks?: readonly DoctorCheck[];
+  suiteComparisons?: readonly { name: string; baseline: number | null; current: number | null }[];
 }
 
 export interface TextRenderOptions {

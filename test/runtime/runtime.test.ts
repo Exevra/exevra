@@ -1653,6 +1653,8 @@ test("diff returns baseline changes without mutating config or baseline and reus
     changedPaths: ["runner-config.json"],
   });
 
+  assert.deepEqual(result.suiteComparisons, [{ name: "unit", baseline: 10, current: 8 }]);
+
   assert.deepEqual(result.changes, {
     suites: [
       {
