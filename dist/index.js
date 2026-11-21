@@ -39560,69 +39560,72 @@ __nccwpck_require__.d(__webpack_exports__, {
 var core = __nccwpck_require__(930);
 ;// CONCATENATED MODULE: ./build/src/cli/summary.js
 const escapeHtml = (value) => value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-const outcome = (input) => input.findings.some(({ severity }) => severity === "error")
-    ? "EXEVRA BLOCKED"
-    : input.findings.length > 0
-        ? "EXEVRA PASSED WITH WARNINGS"
-        : "EXEVRA PASSED";
-const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
-const identityList = (identifiers) => {
-    const displayed = [...identifiers]
-        .sort(compare)
-        .slice(0, 20)
-        .map((identifier) => JSON.stringify(identifier));
-    const more = identifiers.length - displayed.length;
-    return `${displayed.join(", ")}${more === 0 ? "" : ` and ${more} more`}`;
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const descriptions = {
+    REPORT_MISSING: "A required report is missing.", REPORT_UNREADABLE: "A required report could not be read.",
+    SHARD_MISSING: "A required shard is missing.", SHARD_NO_TESTS_EXECUTED: "A shard executed no tests.",
+    NO_TESTS_EXECUTED: "No tests were executed.", SUITE_BELOW_MINIMUM: "A suite ran fewer tests than its minimum.",
+    SUITE_DROP_EXCEEDED: "A suite ran fewer tests than its baseline allows.", TEST_IDENTITIES_CHANGED: "Test identities changed.",
+    BASELINE_MISSING: "No reviewed baseline is available.", BASELINE_SCHEMA_UNSUPPORTED: "The baseline version is unsupported.",
+    WATCHED_CONFIG_CHANGED_WITH_SIGNAL_DROP: "Configuration changed while test execution dropped.",
+    TEST_COMMAND_FAILED: "The configured test command failed.", TEST_FILTERED: "Test-selection flags were detected.",
 };
-const renderGitHubSummaryBody = (input, options = {}) => {
-    const lines = [outcome(input)];
-    if (input.checks !== undefined) {
-        lines.push("DOCTOR");
-        lines.push(...input.checks.map(({ name, status }) => `${name}: ${status}`));
-        return lines;
+const renderGitHubSummary = (input, options = {}) => {
+    const status = input.findings.some(({ severity }) => severity === "error") ? (options.advisory ? "EXEVRA ADVISORY — NOT BLOCKING" : "EXEVRA BLOCKED") : input.findings.length ? "EXEVRA PASSED WITH WARNINGS" : "EXEVRA PASSED";
+    const lines = ["## Exevra", "", '<img src="https://raw.githubusercontent.com/Exevra/exevra/main/website/src/assets/exevra-folded-trace.png" alt="Exevra logo" width="64" />', "", `### ${status}`, ""];
+    if (input.checks) {
+        lines.push("### Checks", "", ...input.checks.map(({ name, status }) => `- ${escapeHtml(name)}: **${escapeHtml(status)}**`), "");
+        return lines.join("\n");
     }
-    const findings = new Map();
-    for (const finding of input.findings) {
-        const key = `${finding.code} (${finding.severity})`;
-        findings.set(key, (findings.get(key) ?? 0) + 1);
+    if (input.suites?.length) {
+        const executed = input.suites.reduce((sum, suite) => sum + suite.executed, 0);
+        const skipped = input.suites.reduce((sum, suite) => sum + suite.skipped, 0);
+        lines.push(`**${executed} tests executed** · ${skipped} skipped · ${input.suites.length} suites`, "");
     }
-    for (const [finding, count] of [...findings].sort(([left], [right]) => left.localeCompare(right)))
-        lines.push(`finding: ${finding} x${count}`);
-    if (input.suites !== undefined)
-        lines.push(`suites: ${input.suites.length}, executed: ${input.suites.reduce((total, suite) => total + suite.executed, 0)}, skipped: ${input.suites.reduce((total, suite) => total + suite.skipped, 0)}`);
-    if (input.changes !== undefined) {
-        const changes = new Map();
-        for (const change of input.changes.suites)
-            changes.set(change.kind, (changes.get(change.kind) ?? 0) + 1);
-        lines.push(`suite changes: ${[...changes]
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([kind, count]) => `${kind} ${count}`)
-            .join(", ") || "none"}`);
+    if (input.findings.length) {
+        lines.push("### Needs attention", "");
+        for (const finding of input.findings) {
+            const counts = finding.missingTestCount === undefined || finding.addedTestCount === undefined ? "" : ` (${finding.missingTestCount} missing, ${finding.addedTestCount} added)`;
+            lines.push(`- **${escapeHtml(finding.code)}** (${finding.severity === "error" && !options.advisory ? "blocked" : "warning"}): ${descriptions[finding.code] ?? "Review this finding."}${counts}`);
+        }
+        lines.push("", "Review the findings and run `exevra diff` before updating the baseline.", "");
     }
-    for (const diff of [...(options.identityDiffs ?? [])].sort((left, right) => compare(left.suite, right.suite)))
-        lines.push(`[TEST_IDENTITIES_CHANGED] ${diff.suite} missing: ${identityList(diff.missingTestIds)}; added: ${identityList(diff.addedTestIds)}`);
-    if ((input.notices ?? []).length > 0)
-        lines.push(`notices: ${input.notices.length}`);
-    return lines;
+    if (input.suiteComparisons?.length) {
+        lines.push("### Suite comparison", "", "<table><thead><tr><th>Suite</th><th>Baseline</th><th>This run</th><th>Change</th><th>Status</th></tr></thead><tbody>");
+        for (const suite of input.suiteComparisons) {
+            const delta = suite.baseline === null || suite.current === null ? "—" : `${suite.current - suite.baseline > 0 ? "+" : ""}${suite.current - suite.baseline}`;
+            const findings = input.findings.filter((finding) => finding.suite === suite.name);
+            const state = findings.some(({ severity }) => severity === "error") && !options.advisory ? "Blocked" : findings.length ? "Warning" : suite.baseline === null ? "Added" : suite.current === null ? "Removed" : "Passed";
+            lines.push(`<tr><td>${escapeHtml(suite.name)}</td><td>${suite.baseline ?? "—"}</td><td>${suite.current ?? "—"}</td><td>${delta}</td><td>${state}</td></tr>`);
+        }
+        lines.push("</tbody></table>", "");
+    }
+    if (input.changes)
+        lines.push(`Baseline comparison: ${input.changes.suites.length} suite changes.`, "");
+    for (const diff of options.identityDiffs ?? []) {
+        const show = (ids) => ids.slice().sort().slice(0, 20).map((id) => escapeHtml(JSON.stringify(id))).join(", ");
+        lines.push(`<p><strong>Test identities: ${escapeHtml(diff.suite)}</strong><br>Missing: ${show(diff.missingTestIds)}<br>Added: ${show(diff.addedTestIds)}</p>`);
+    }
+    if (input.notices?.length) {
+        const safeNotices = new Set([
+            "The current command or report configuration differs from the reviewed baseline.",
+            "Changed-file comparison is unavailable because no base ref was supplied.",
+            "Changed-file comparison is unavailable for aggregate checks.",
+        ]);
+        lines.push("### Notices", "", "<ul>");
+        for (const notice of input.notices)
+            lines.push(`<li>${safeNotices.has(notice) ? escapeHtml(notice) : "Additional notice available in the CLI output."}</li>`);
+        lines.push("</ul>", "");
+    }
+    return lines.join("\n") + "\n";
 };
-const renderGitHubSummaryText = (input, options = {}) => renderGitHubSummaryBody(input, options).join("\n");
-const renderGitHubSummary = (input, options = {}) => `## Exevra\n\n<pre><code>${escapeHtml(renderGitHubSummaryText(input, options))}</code></pre>\n`;
 
 ;// CONCATENATED MODULE: ./build/src/action/index.js
 
 
 const findingText = (finding) => (0,core/* renderText */.S5)({ findings: [finding] }).trim();
-const action_escapeHtml = (value) => value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 const baseRefFor = (eventName, payload) => {
     if (eventName !== "pull_request")
         return undefined;
@@ -39645,8 +39648,9 @@ const runAction = async ({ core, eventName, eventPayload, check, }) => {
             configPath: core.getInput("config"),
             ...(baseRef === undefined ? {} : { baseRef }),
         });
-        const summary = renderGitHubSummaryText(checked, {
+        const summary = renderGitHubSummary(checked, {
             identityDiffs: checked.identityDiffs,
+            advisory: mode === "advisory",
         });
         for (const finding of checked.findings) {
             if (mode === "advisory" || finding.severity === "warning")
@@ -39654,7 +39658,7 @@ const runAction = async ({ core, eventName, eventPayload, check, }) => {
             else
                 core.error(findingText(finding));
         }
-        await core.summary.addCodeBlock(action_escapeHtml(summary), "text").write();
+        await core.summary.addRaw(summary).write();
         if (mode === "enforce" &&
             checked.findings.some((finding) => finding.severity === "error"))
             core.setFailed("EXEVRA BLOCKED");
@@ -39676,7 +39680,7 @@ __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependen
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(3218);
 /* harmony import */ var node_fs_promises__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(1455);
 /* harmony import */ var _index_js__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(2751);
-/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7307);
+/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(9264);
 
 
 
@@ -40472,7 +40476,7 @@ const renderGitHubActions = (input) => {
 
 /***/ }),
 
-/***/ 7307:
+/***/ 9264:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -40481,7 +40485,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   z6: () => (/* reexport */ check_check)
 });
 
-// UNUSED EXPORTS: RuntimeError, aggregate, assertSafeInRootPath, changedFiles, diff, doctor, initialize, initializeNode, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
+// UNUSED EXPORTS: RuntimeError, acceptBaseline, aggregate, assertSafeInRootPath, changedFiles, diff, doctor, initialize, initializeNode, loadRuntimeConfig, proposeBaseline, record, resolveInRoot, validateBaseRef
 
 // EXTERNAL MODULE: ./build/src/core/index.js + 7 modules
 var core = __nccwpck_require__(930);
@@ -41324,6 +41328,13 @@ const reports_loadAggregatedReports = async (root, aggregation) => {
 
 
 
+const check_compareSuiteCounts = (baseline, suites) => {
+    if (!baseline || baseline.schemaVersion !== 1)
+        return undefined;
+    const before = new Map(baseline.suites.map((suite) => [suite.name, suite.executed]));
+    const after = new Map(suites.map((suite) => [suite.name, suite.executed]));
+    return [...new Set([...before.keys(), ...after.keys()])].sort().map((name) => ({ name, baseline: before.get(name) ?? null, current: after.get(name) ?? null }));
+};
 const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutput, }, context = {}) => {
     const loaded = context.loaded ?? (await load_loadRuntimeConfig(configPath));
     const notices = [];
@@ -41341,7 +41352,7 @@ const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutp
         };
     const findings = filterFindings;
     const baseline = await load_readBaselineIfPresent(loaded.root, loaded.baselinePath);
-    await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config), [loaded.configPath, loaded.baselinePath]);
+    await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config), [loaded.configPath, loaded.baselinePath, `${loaded.baselinePath}.candidate`]);
     const commandStartedAt = Date.now();
     const command = await command_runConfiguredCommand(loaded.root, loaded.config.command, suppressCommandOutput);
     if (command.finding)
@@ -41399,6 +41410,7 @@ const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutp
         identityDiffs: result.identityDiffs,
         suites,
         notices,
+        suiteComparisons: check_compareSuiteCounts(baseline, suites),
         config: loaded.config,
         baseline,
     };
@@ -41555,6 +41567,7 @@ const doctor = async (options) => {
 
 
 
+
 const shardFinding = (shard) => ({
     code: "SHARD_MISSING",
     severity: "error",
@@ -41600,7 +41613,7 @@ const aggregate = async ({ configPath, }) => {
         currentSuites: suites,
         changedPaths: [],
     });
-    return { ...result, suites, notices };
+    return { ...result, suites, notices, suiteComparisons: compareSuiteCounts(baseline, suites) };
 };
 
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
@@ -41624,7 +41637,7 @@ class record_BaselineExistsError extends paths_RuntimeError {
         super(`baseline already exists: ${path}; pass explicit write permission to overwrite it`);
     }
 }
-const atomicWriteBaseline = async (path, contents, overwrite) => {
+const record_atomicWriteBaseline = async (path, contents, overwrite) => {
     const temporary = `${path}.tmp-${randomUUID()}`;
     const file = await open(temporary, "wx", 0o600);
     try {
@@ -41648,7 +41661,7 @@ const atomicWriteBaseline = async (path, contents, overwrite) => {
         await rm(temporary, { force: true }).catch(() => undefined);
     }
 };
-const record_record = async ({ configPath, write = false, generatedAt = new Date().toISOString(), }) => {
+const record_record = async ({ configPath, write = false, generatedAt = new Date().toISOString(), prepare = false, }) => {
     const loaded = await loadRuntimeConfig(configPath);
     const filterFindings = loaded.config.maven
         ? mavenFilterFindings(loaded.config.command, loaded.config.maven.filterPolicy ?? "warn")
@@ -41672,7 +41685,7 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
                 throw error;
         }
     }
-    await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath]);
+    await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath, `${loaded.baselinePath}.candidate`]);
     const commandStartedAt = Date.now();
     const command = await runConfiguredCommand(loaded.root, loaded.config.command);
     if (command.finding)
@@ -41711,8 +41724,10 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
             };
         }),
     };
-    await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
-    await atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), write);
+    if (!prepare) {
+        await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
+        await record_atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), write);
+    }
     return { baseline, suites, findings };
 };
 
@@ -41973,7 +41988,190 @@ const initializeNode = async (configPath) => {
     };
 };
 
+;// CONCATENATED MODULE: ./build/src/runtime/candidate.js
+
+
+
+
+
+
+
+
+
+const fingerprint = (value) => createHash("sha256").update(value).digest("hex");
+const within = (directory, path) => {
+    const relation = relative(directory, path);
+    return relation === "" || (relation !== ".." && !relation.startsWith(`..${sep}`) && !isAbsolute(relation));
+};
+const canonicalPath = async (path) => {
+    try {
+        return await realpath(path);
+    }
+    catch (error) {
+        if (error.code !== "ENOENT")
+            throw error;
+        return join(await canonicalPath(dirname(path)), basename(path));
+    }
+};
+const projectSnapshot = async (root, candidatePath, redirected = new Set(), captureOutput = false, generated = []) => {
+    const files = new Map();
+    const visited = new Set();
+    const generatedPaths = await Promise.all(generated.map((directory) => canonicalPath(resolveInRoot(root, directory))));
+    const outputs = captureOutput ? [1, 2].flatMap((fd) => { try {
+        const stat = fstatSync(fd);
+        return stat.isFile() ? [stat] : [];
+    }
+    catch {
+        return [];
+    } }) : [];
+    const visit = async (path, name) => {
+        if (generated.some((directory) => name === `./${directory}` || name.startsWith(`./${directory}/`)))
+            return;
+        if (path === candidatePath || path === join(root, ".git") || path.endsWith(`${sep}__pycache__`) || path.endsWith(`${sep}.pytest_cache`) || path.endsWith(`${sep}node_modules${sep}.vite`))
+            return;
+        const entry = await lstat(path);
+        if (entry.isFile() && outputs.some((output) => output.dev === entry.dev && output.ino === entry.ino)) {
+            redirected.add(name);
+            return;
+        }
+        if (redirected.has(name))
+            return;
+        if (entry.isSymbolicLink()) {
+            files.set(name, fingerprint(`link:${entry.mode}:${await readlink(path)}`));
+            const target = await realpath(path);
+            const relation = relative(root, target);
+            if ((relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) && !(await lstat(target)).isFile())
+                throw new RuntimeError(`cannot verify project files through an external directory symlink: ${path}`);
+            if (generatedPaths.some((directory) => within(directory, target)))
+                return;
+            await visit(target, `${name}/target`);
+        }
+        else if (entry.isDirectory()) {
+            const canonical = await realpath(path);
+            if (generatedPaths.some((directory) => within(directory, canonical)))
+                return;
+            if (visited.has(canonical))
+                return;
+            visited.add(canonical);
+            for (const child of (await readdir(path)).sort())
+                await visit(join(path, child), `${name}/${child}`);
+        }
+        else if (entry.isFile()) {
+            const content = await readFile(path);
+            const after = await lstat(path);
+            if (after.size !== entry.size || after.mtimeMs !== entry.mtimeMs || after.ino !== entry.ino)
+                throw new RuntimeError(`project file changed during snapshot: ${path}`);
+            files.set(name, createHash("sha256").update(`${entry.mode}:`).update(content).digest("hex"));
+        }
+        else
+            throw new RuntimeError(`cannot verify project file: ${path}`);
+    };
+    await visit(root, ".");
+    return files;
+};
+const snapshotFingerprint = (files, excluded) => fingerprint(JSON.stringify([...files].filter(([name]) => !excluded.includes(name)).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)));
+const generatedDirectories = async (root, paths, protectedPaths) => {
+    const result = new Set();
+    for (const path of paths) {
+        if (!path || path.includes("\0") || path.includes("\\") || path.split("/").includes("..") || isAbsolute(path))
+            throw new RuntimeError("generated output must be a relative directory within the configuration root");
+        const target = resolveInRoot(root, path);
+        const canonicalTarget = await canonicalPath(target);
+        const canonicalProtected = await Promise.all(protectedPaths.map(canonicalPath));
+        if (canonicalProtected.some((protectedPath) => within(canonicalTarget, protectedPath)))
+            throw new RuntimeError("generated output cannot contain the configuration, baseline, or candidate");
+        await assertSafeInRootPath(root, target);
+        try {
+            if (!(await lstat(target)).isDirectory())
+                throw new RuntimeError(`generated output is not a directory: ${path}`);
+        }
+        catch (error) {
+            if (error.code !== "ENOENT")
+                throw error;
+        }
+        result.add(relative(root, canonicalTarget).split(sep).join("/"));
+    }
+    return [...result].sort();
+};
+const proposeBaseline = async ({ configPath, excludeGenerated = [] }) => {
+    const loaded = await loadRuntimeConfig(configPath);
+    const candidatePath = `${loaded.baselinePath}.candidate`;
+    const generated = await generatedDirectories(loaded.root, excludeGenerated, [loaded.configPath, loaded.baselinePath, candidatePath]);
+    await assertSafeInRootPath(loaded.root, candidatePath, true);
+    try {
+        await lstat(candidatePath);
+        throw new RuntimeError("candidate already exists; review or remove it before proposing another");
+    }
+    catch (error) {
+        if (error.code !== "ENOENT")
+            throw error;
+    }
+    const configSource = await readFile(loaded.configPath, "utf8");
+    await assertSafeInRootPath(loaded.root, loaded.baselinePath);
+    let baselineSource;
+    try {
+        baselineSource = await readFile(loaded.baselinePath, "utf8");
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            throw new RuntimeError("a reviewed baseline is required before proposing changes");
+        throw error;
+    }
+    const baseline = loadBaseline(baselineSource);
+    const redirected = new Set();
+    const beforeReports = await expandConfiguredReportPaths(loaded.root, loaded.config);
+    const before = await projectSnapshot(loaded.root, candidatePath, redirected, true, generated);
+    const result = await record({ configPath, write: true, prepare: true });
+    if (result.findings.some((finding) => finding.severity === "error") || !result.baseline)
+        throw new RuntimeError("cannot propose a baseline because the test command or reports failed");
+    if (await readFile(loaded.configPath, "utf8") !== configSource || await readFile(loaded.baselinePath, "utf8") !== baselineSource)
+        throw new RuntimeError("configuration or baseline changed during the test run");
+    const afterReports = await expandConfiguredReportPaths(loaded.root, loaded.config);
+    const after = await projectSnapshot(loaded.root, candidatePath, redirected, true, generated);
+    const excluded = [...new Set([...redirected, ...beforeReports.map((path) => `./${relative(loaded.root, path)}`), ...afterReports.map((path) => `./${relative(loaded.root, path)}`)])].sort();
+    const projectHash = snapshotFingerprint(after, excluded);
+    if (snapshotFingerprint(before, excluded) !== projectHash)
+        throw new RuntimeError("project files changed during the test run; create a fresh proposal");
+    const source = JSON.stringify({ configHash: fingerprint(configSource), baselineHash: fingerprint(baselineSource), projectHash, excluded, generated, baseline: result.baseline }, null, 2) + "\n";
+    await assertSafeInRootPath(loaded.root, candidatePath, true);
+    await atomicWriteBaseline(candidatePath, source, false);
+    const evaluation = evaluate({ config: loaded.config, baseline, currentSuites: result.suites });
+    return { fingerprint: fingerprint(source), changes: compareBaseline(baseline, result.suites, loaded.config), findings: [...result.findings, ...evaluation.findings], identityDiffs: evaluation.identityDiffs };
+};
+const acceptBaseline = async ({ configPath, fingerprint: expected }) => {
+    if (!/^[0-9a-f]{64}$/.test(expected))
+        throw new RuntimeError("candidate fingerprint must be a SHA-256 hex digest");
+    const loaded = await loadRuntimeConfig(configPath);
+    const candidatePath = `${loaded.baselinePath}.candidate`;
+    await assertSafeInRootPath(loaded.root, candidatePath);
+    const source = await readFile(candidatePath, "utf8");
+    if (fingerprint(source) !== expected)
+        throw new RuntimeError("candidate fingerprint does not match the reviewed candidate");
+    let candidate;
+    try {
+        candidate = JSON.parse(source);
+    }
+    catch {
+        throw new RuntimeError("invalid candidate JSON");
+    }
+    if (!candidate || typeof candidate !== "object")
+        throw new RuntimeError("invalid candidate JSON");
+    if (fingerprint(await readFile(loaded.configPath, "utf8")) !== candidate.configHash)
+        throw new RuntimeError("configuration changed since candidate review");
+    await assertSafeInRootPath(loaded.root, loaded.baselinePath);
+    if (fingerprint(await readFile(loaded.baselinePath, "utf8")) !== candidate.baselineHash)
+        throw new RuntimeError("baseline changed since candidate review");
+    if (!candidate.projectHash || !Array.isArray(candidate.excluded) || !candidate.excluded.every((value) => typeof value === "string") || !Array.isArray(candidate.generated) || !candidate.generated.every((value) => typeof value === "string"))
+        throw new RuntimeError("candidate has no valid freshness information; create a fresh proposal");
+    const generated = await generatedDirectories(loaded.root, candidate.generated, [loaded.configPath, loaded.baselinePath, candidatePath]);
+    if (snapshotFingerprint(await projectSnapshot(loaded.root, candidatePath, new Set(candidate.excluded), false, generated), candidate.excluded) !== candidate.projectHash)
+        throw new RuntimeError("project files changed since candidate review; create a fresh proposal");
+    const baseline = loadBaseline(candidate.baseline);
+    await atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), true);
+};
+
 ;// CONCATENATED MODULE: ./build/src/runtime/index.js
+
 
 
 
@@ -44997,13 +45195,13 @@ function getIDToken(aud) {
 * re2js
 * RE2JS is the JavaScript port of RE2, a regular expression engine that provides linear time matching
 *
-* @version v2.9.1
+* @version v2.10.0
 * @author Oleksii Vasyliev
 * @homepage https://github.com/le0pard/re2js#readme
 * @repository [object Object]
 * @license MIT
 */
-//#region src/RE2Flags.js
+// src/RE2Flags.js
 var RE2Flags = class RE2Flags {
 	static FOLD_CASE = 1;
 	static LITERAL = 2;
@@ -45022,8 +45220,7 @@ var RE2Flags = class RE2Flags {
 	static ANCHOR_START = 1;
 	static ANCHOR_BOTH = 2;
 };
-//#endregion
-//#region src/PublicFlags.js
+// src/PublicFlags.js
 /**
 * Public flags for RE2JS and RE2Set compilation.
 */
@@ -45035,8 +45232,7 @@ const PublicFlags = {
 	LONGEST_MATCH: 16,
 	LOOKBEHINDS: 512
 };
-//#endregion
-//#region src/Codepoint.js
+// src/Codepoint.js
 /**
 * Various constants and helper for unicode codepoints.
 */
@@ -45135,8 +45331,7 @@ var Codepoint = class {
 		return s.codePointAt(0);
 	}
 };
-//#endregion
-//#region src/UnicodeRangeTable.js
+// src/UnicodeRangeTable.js
 var UnicodeRangeTable = class {
 	/**
 	* @param {Uint32Array | number[]} data
@@ -45160,8 +45355,7 @@ var UnicodeRangeTable = class {
 		return this.data.length / this.SIZE;
 	}
 };
-//#endregion
-//#region src/UnicodeTables.js
+// src/UnicodeTables.js
 const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
 const B64_MAP = /* @__PURE__ */ new Uint8Array(256);
 for (let i = 0; i < 64; i++) B64_MAP[B64.charCodeAt(i)] = i;
@@ -45213,12 +45407,11 @@ var LazyMap = class {
 		this.cache = /* @__PURE__ */ new Map();
 	}
 	has(key) {
-		return key in this.initializer;
+		return Object.hasOwn(this.initializer, key);
 	}
 	get(key) {
 		if (this.cache.has(key)) return this.cache.get(key);
-		const fn = this.initializer[key];
-		const val = fn ? fn() : null;
+		const val = this.has(key) ? this.initializer[key]() : null;
 		this.cache.set(key, val);
 		return val;
 	}
@@ -45487,8 +45680,7 @@ var UnicodeTables = class {
 		Inherited: () => new UnicodeRangeTable(decodeRanges("5cgBgBlgHAB", false))
 	});
 };
-//#endregion
-//#region src/Unicode.js
+// src/Unicode.js
 /**
 * Utilities for dealing with Unicode better than JS does.
 */
@@ -45561,8 +45753,89 @@ var Unicode = class Unicode {
 		return false;
 	}
 };
-//#endregion
-//#region src/Utils.js
+// src/exceptions.js
+var RE2JSException = class extends Error {
+	/** @param {string} message */
+	constructor(message) {
+		super(message);
+		this.name = "RE2JSException";
+	}
+};
+/**
+* An exception thrown by the parser if the pattern was invalid.
+*/
+var RE2JSSyntaxException = class extends RE2JSException {
+	/**
+	* @param {string} error
+	* @param {string|null} [input=null]
+	*/
+	constructor(error, input = null) {
+		let message = `error parsing regexp: ${error}`;
+		if (input) message += `: \`${input}\``;
+		super(message);
+		this.name = "RE2JSSyntaxException";
+		this.message = message;
+		/** @type {string} */
+		this.error = error;
+		/** @type {string|null} */
+		this.input = input;
+	}
+	/**
+	* Retrieves the description of the error.
+	* @returns {string}
+	*/
+	getDescription() {
+		return this.error;
+	}
+	/**
+	* Retrieves the erroneous regular-expression pattern.
+	* @returns {string|null}
+	*/
+	getPattern() {
+		return this.input;
+	}
+};
+/**
+* An exception thrown by the compiler
+*/
+var RE2JSCompileException = class extends RE2JSException {
+	/** @param {string} message */
+	constructor(message) {
+		super(message);
+		this.name = "RE2JSCompileException";
+	}
+};
+/**
+* An exception thrown by using groups
+*/
+var RE2JSGroupException = class extends RE2JSException {
+	/** @param {string} message */
+	constructor(message) {
+		super(message);
+		this.name = "RE2JSGroupException";
+	}
+};
+/**
+* An exception thrown by flags
+*/
+var RE2JSFlagsException = class extends RE2JSException {
+	/** @param {string} message */
+	constructor(message) {
+		super(message);
+		this.name = "RE2JSFlagsException";
+	}
+};
+/**
+* An exception thrown for internal engine errors, such as corrupted bytecodes.
+*/
+var RE2JSInternalException = class extends RE2JSException {
+	/** @param {string} message */
+	constructor(message) {
+		super(message);
+		this.name = "RE2JSInternalException";
+	}
+};
+// src/Utils.js
 /**
 * Size of the precomputed single-byte lookup table.
 * Covers standard ASCII and Latin-1 characters for fast-path execution.
@@ -45593,6 +45866,23 @@ var Utils = class Utils {
 	static EMPTY_ALL = -1;
 	static emptyInts() {
 		return [];
+	}
+	static isString(value) {
+		return typeof value === "string" || Object.prototype.toString.call(value) === "[object String]";
+	}
+	static typeName(value) {
+		if (value === null || typeof value !== "object" && typeof value !== "function") return value === null ? "null" : typeof value;
+		return Object.prototype.toString.call(value).slice(8, -1);
+	}
+	static checkPattern(pattern) {
+		if (!Utils.isString(pattern)) throw new TypeError(`The pattern must be a string, not ${Utils.typeName(pattern)} (RE2JS.translateRegExp() converts a RegExp)`);
+	}
+	static checkInput(input) {
+		if (!Utils.isString(input) && !Utils.isByteArray(input)) throw new TypeError(`The input must be a string or a byte array (Uint8Array or number[]), not ${Utils.typeName(input)}`);
+	}
+	static checkFlags(flags) {
+		const known = PublicFlags.MULTILINE | PublicFlags.DOTALL | PublicFlags.CASE_INSENSITIVE | PublicFlags.DISABLE_UNICODE_GROUPS | PublicFlags.LONGEST_MATCH | PublicFlags.LOOKBEHINDS;
+		if (!Number.isInteger(flags) || (flags & ~known) !== 0) throw new RE2JSFlagsException("Flags should only be a combination of MULTILINE, DOTALL, CASE_INSENSITIVE, DISABLE_UNICODE_GROUPS, LONGEST_MATCH, LOOKBEHINDS");
 	}
 	static isByteArray(input) {
 		return Array.isArray(input) || Object.prototype.toString.call(input) === "[object Uint8Array]";
@@ -45755,8 +46045,7 @@ var Utils = class Utils {
 		}
 	}
 };
-//#endregion
-//#region src/helpers.js
+// src/helpers.js
 const createEnum = (values = [], initNum = 0) => {
 	const enumObject = Object.create(null);
 	for (let i = 0; i < values.length; i++) {
@@ -45767,8 +46056,7 @@ const createEnum = (values = [], initNum = 0) => {
 	}
 	return Object.freeze(enumObject);
 };
-//#endregion
-//#region src/MatcherInput.js
+// src/MatcherInput.js
 /**
 * Abstract the representations of input text supplied to Matcher.
 */
@@ -45872,6 +46160,7 @@ var MatcherInput = class {
 	* @returns {Utf16MatcherInput}
 	*/
 	static utf16(charSequence) {
+		Utils.checkInput(charSequence);
 		return new Utf16MatcherInput(charSequence);
 	}
 	/**
@@ -45883,8 +46172,7 @@ var MatcherInput = class {
 		return new Utf8MatcherInput(Utils.stringToUtf8ByteArray(input));
 	}
 };
-//#endregion
-//#region src/MachineInput.js
+// src/MachineInput.js
 /**
 * MachineInput abstracts different representations of the input text supplied to the Machine. It
 * provides one-character lookahead.
@@ -46064,95 +46352,12 @@ var MachineInput = class {
 	static fromUTF8(bytes, start = 0, end = bytes.length) {
 		return new MachineUTF8Input(bytes, start, end);
 	}
-	static fromUTF16(charSequence, start = 0, end = charSequence.length) {
-		return new MachineUTF16Input(charSequence, start, end);
+	static fromUTF16(charSequence, start = 0, end = void 0) {
+		Utils.checkInput(charSequence);
+		return new MachineUTF16Input(charSequence, start, end ?? charSequence.length);
 	}
 };
-//#endregion
-//#region src/exceptions.js
-var RE2JSException = class extends Error {
-	/** @param {string} message */
-	constructor(message) {
-		super(message);
-		this.name = "RE2JSException";
-	}
-};
-/**
-* An exception thrown by the parser if the pattern was invalid.
-*/
-var RE2JSSyntaxException = class extends RE2JSException {
-	/**
-	* @param {string} error
-	* @param {string|null} [input=null]
-	*/
-	constructor(error, input = null) {
-		let message = `error parsing regexp: ${error}`;
-		if (input) message += `: \`${input}\``;
-		super(message);
-		this.name = "RE2JSSyntaxException";
-		this.message = message;
-		/** @type {string} */
-		this.error = error;
-		/** @type {string|null} */
-		this.input = input;
-	}
-	/**
-	* Retrieves the description of the error.
-	* @returns {string}
-	*/
-	getDescription() {
-		return this.error;
-	}
-	/**
-	* Retrieves the erroneous regular-expression pattern.
-	* @returns {string|null}
-	*/
-	getPattern() {
-		return this.input;
-	}
-};
-/**
-* An exception thrown by the compiler
-*/
-var RE2JSCompileException = class extends RE2JSException {
-	/** @param {string} message */
-	constructor(message) {
-		super(message);
-		this.name = "RE2JSCompileException";
-	}
-};
-/**
-* An exception thrown by using groups
-*/
-var RE2JSGroupException = class extends RE2JSException {
-	/** @param {string} message */
-	constructor(message) {
-		super(message);
-		this.name = "RE2JSGroupException";
-	}
-};
-/**
-* An exception thrown by flags
-*/
-var RE2JSFlagsException = class extends RE2JSException {
-	/** @param {string} message */
-	constructor(message) {
-		super(message);
-		this.name = "RE2JSFlagsException";
-	}
-};
-/**
-* An exception thrown for internal engine errors, such as corrupted bytecodes.
-*/
-var RE2JSInternalException = class extends RE2JSException {
-	/** @param {string} message */
-	constructor(message) {
-		super(message);
-		this.name = "RE2JSInternalException";
-	}
-};
-//#endregion
-//#region src/Matcher.js
+// src/Matcher.js
 /**
 * A stateful iterator that interprets a regex {@code RE2JS} on a specific input.
 *
@@ -46579,7 +46784,7 @@ var Matcher = class Matcher {
 					i += 2;
 				} else {
 					const name = replacement.substring(i + 2, gt);
-					if (Object.prototype.hasOwnProperty.call(this.namedGroups, name)) {
+					if (Object.hasOwn(this.namedGroups, name)) {
 						const group = this.group(name);
 						if (group !== null) res += group;
 					}
@@ -46697,8 +46902,7 @@ var Matcher = class Matcher {
 		return result;
 	}
 };
-//#endregion
-//#region src/Inst.js
+// src/Inst.js
 /**
 * A single instruction in the regular expression virtual machine.
 *
@@ -46819,8 +47023,7 @@ var Inst = class Inst {
 		}
 	}
 };
-//#endregion
-//#region src/Machine.js
+// src/Machine.js
 var Queue = class Queue {
 	constructor(numInst) {
 		this.sparse = new Int32Array(numInst);
@@ -47197,8 +47400,7 @@ var Machine = class Machine {
 		}
 	}
 };
-//#endregion
-//#region src/DFA.js
+// src/DFA.js
 const hashState = (pcs, flag, ids) => {
 	let h = -2128831035;
 	for (let i = 0; i < pcs.length; i++) {
@@ -47517,8 +47719,7 @@ var DFA = class DFA {
 		return Array.from(matches).sort((a, b) => a - b);
 	}
 };
-//#endregion
-//#region src/Backtracker.js
+// src/Backtracker.js
 const VISITED_BITS = 32;
 const MAX_BACKTRACK_PROG = 500;
 const INITIAL_JOB_CAPACITY = 256;
@@ -47731,8 +47932,7 @@ var Backtracker = class Backtracker {
 		return result;
 	}
 };
-//#endregion
-//#region src/OnePass.js
+// src/OnePass.js
 var QueueOnePass = class {
 	constructor(size) {
 		this.sparse = new Uint32Array(size);
@@ -48097,8 +48297,7 @@ var OnePass = class OnePass {
 		return ncap === 0 ? [] : Utils.toArray(matchcap);
 	}
 };
-//#endregion
-//#region src/Regexp.js
+// src/Regexp.js
 /**
 * Regular expression abstract syntax tree. Produced by parser, used by compiler. NB, this
 * corresponds to {@code syntax.regexp} in the Go implementation; Go's {@code regexp} is called
@@ -48354,8 +48553,7 @@ var Regexp = class Regexp {
 		return true;
 	}
 };
-//#endregion
-//#region src/RegexpWalker.js
+// src/RegexpWalker.js
 /**
 * Walks a Regexp tree without recursion, visiting nodes in the same order a recursive walk
 * would (RE2: re2/walker-inl.h, "Helper class for traversing Regexps without recursion").
@@ -48407,8 +48605,7 @@ var RegexpWalker = class {
 		}
 	}
 };
-//#endregion
-//#region src/Prefilter.js
+// src/Prefilter.js
 var AhoCorasick = class {
 	constructor(words, alphabetSize) {
 		const edges = /* @__PURE__ */ new Map();
@@ -48668,8 +48865,7 @@ var PrefilterTree = class PrefilterTree {
 		return pf;
 	}
 };
-//#endregion
-//#region src/Prog.js
+// src/Prog.js
 /**
 * A list of instruction pointers waiting to be patched.
 * Tracks both `head` and `tail` to allow O(1) appending during compilation.
@@ -48806,8 +49002,7 @@ var Prog = class {
 		return out;
 	}
 };
-//#endregion
-//#region src/Compiler.js
+// src/Compiler.js
 const ANY_RUNE_NOT_NL = new Int32Array([
 	0,
 	Codepoint.CODES["\n"] - 1,
@@ -49065,8 +49260,7 @@ var Compiler = class Compiler {
 		}
 	}
 };
-//#endregion
-//#region src/Simplify.js
+// src/Simplify.js
 var Simplify = class Simplify {
 	static simplify(re) {
 		if (re === null) return null;
@@ -49228,8 +49422,7 @@ var Simplify = class Simplify {
 		return nre;
 	}
 };
-//#endregion
-//#region src/CharGroup.js
+// src/CharGroup.js
 var CharGroup = class {
 	constructor(sign, cls) {
 		this.sign = sign;
@@ -49359,8 +49552,7 @@ const POSIX_GROUPS = /* @__PURE__ */ new Map([
 	["[:xdigit:]", new CharGroup(1, code17)],
 	["[:^xdigit:]", new CharGroup(-1, code17)]
 ]);
-//#endregion
-//#region src/CharClass.js
+// src/CharClass.js
 /**
 * A "builder"-style helper class for manipulating character classes represented as an array of
 * pairs of runes [lo, hi], each denoting an inclusive interval.
@@ -49550,8 +49742,7 @@ var CharClass = class CharClass {
 		return CharClass.charClassToString(this.r, this.len);
 	}
 };
-//#endregion
-//#region src/Parser.js
+// src/Parser.js
 var StringIterator = class {
 	constructor(str) {
 		this.str = str;
@@ -50654,8 +50845,7 @@ var Parser = class Parser {
 		this.push(re);
 	}
 };
-//#endregion
-//#region src/RE2.js
+// src/RE2.js
 /**
 * An RE2 class instance is a compiled representation of an RE2 regular expression, independent of
 * the public Java-like Pattern/Matcher API.
@@ -51161,8 +51351,7 @@ var RE2 = class RE2 {
 		return result;
 	}
 };
-//#endregion
-//#region src/Set.js
+// src/Set.js
 var RE2Set = class RE2Set {
 	/** @type {number} */
 	static UNANCHORED = RE2Flags.UNANCHORED;
@@ -51177,6 +51366,12 @@ var RE2Set = class RE2Set {
 	* @param {number} [maxMem=8388608] - The maximum memory in bytes to use for the DFA (default 8MB).
 	*/
 	constructor(anchor = RE2Set.UNANCHORED, flags = 0, maxMem = 8388608) {
+		if (![
+			RE2Set.UNANCHORED,
+			RE2Set.ANCHOR_START,
+			RE2Set.ANCHOR_BOTH
+		].includes(anchor)) throw new RE2JSFlagsException("The anchor should be RE2Set.UNANCHORED, RE2Set.ANCHOR_START or RE2Set.ANCHOR_BOTH");
+		Utils.checkFlags(flags);
 		this.anchor = anchor;
 		this.jsFlags = flags;
 		this.maxMem = maxMem;
@@ -51198,6 +51393,7 @@ var RE2Set = class RE2Set {
 	*/
 	add(pattern) {
 		if (this.prog) throw new RE2JSCompileException("Cannot add patterns after compile");
+		Utils.checkPattern(pattern);
 		let fregex = pattern;
 		if ((this.jsFlags & PublicFlags.CASE_INSENSITIVE) !== 0) fregex = `(?i)${fregex}`;
 		if ((this.jsFlags & PublicFlags.DOTALL) !== 0) fregex = `(?s)${fregex}`;
@@ -51243,8 +51439,7 @@ var RE2Set = class RE2Set {
 		return machine.matchSet(machineInput, 0, internalAnchor);
 	}
 };
-//#endregion
-//#region src/TranslateRegExpString.js
+// src/TranslateRegExpString.js
 /**
 * Transform JS regex string to RE2 regex string
 */
@@ -51254,7 +51449,7 @@ var TranslateRegExpString = class TranslateRegExpString {
 	}
 	static translate(data) {
 		let prefixFlags = "";
-		if (data instanceof RegExp) {
+		if (Object.prototype.toString.call(data) === "[object RegExp]") {
 			if (data.ignoreCase) prefixFlags += "i";
 			if (data.multiline) prefixFlags += "m";
 			if (data.dotAll) prefixFlags += "s";
@@ -51451,8 +51646,7 @@ var TranslateRegExpString = class TranslateRegExpString {
 		return finalResult;
 	}
 };
-//#endregion
-//#region src/index.js
+// src/index.js
 const execResult = (m, input) => {
 	const result = m.matchArray();
 	result.index = m.start(0);
@@ -51544,11 +51738,12 @@ var RE2JS = class RE2JS {
 	* @returns {RE2JS}
 	*/
 	static compile(regex, flags = 0) {
+		Utils.checkPattern(regex);
+		Utils.checkFlags(flags);
 		let fregex = regex;
 		if ((flags & RE2JS.CASE_INSENSITIVE) !== 0) fregex = `(?i)${fregex}`;
 		if ((flags & RE2JS.DOTALL) !== 0) fregex = `(?s)${fregex}`;
 		if ((flags & RE2JS.MULTILINE) !== 0) fregex = `(?m)${fregex}`;
-		if ((flags & ~(RE2JS.MULTILINE | RE2JS.DOTALL | RE2JS.CASE_INSENSITIVE | RE2JS.DISABLE_UNICODE_GROUPS | RE2JS.LONGEST_MATCH | RE2JS.LOOKBEHINDS)) !== 0) throw new RE2JSFlagsException("Flags should only be a combination of MULTILINE, DOTALL, CASE_INSENSITIVE, DISABLE_UNICODE_GROUPS, LONGEST_MATCH, LOOKBEHINDS");
 		let re2Flags = RE2Flags.PERL;
 		if ((flags & RE2JS.DISABLE_UNICODE_GROUPS) !== 0) re2Flags &= ~RE2Flags.UNICODE_GROUPS;
 		if ((flags & RE2JS.LOOKBEHINDS) !== 0) re2Flags |= RE2Flags.LOOKBEHIND;
@@ -51807,7 +52002,6 @@ function re(stringsOrFlags, ...values) {
 		return RE2JS.compile(pattern, flags);
 	};
 }
-//#endregion
 
 
 

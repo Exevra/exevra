@@ -188,6 +188,8 @@ test("compiled CLI prints help for standard help flags", async (t) => {
     "  init --gradle\n" +
     "  init --pytest [--command <command>]\n" +
     "  record [--config <path>] [--write]\n" +
+    "  propose [--config <path>] [--exclude-generated <directory>]...\n" +
+    "  accept --fingerprint <sha256> [--config <path>]\n" +
     "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
     "  doctor [--config <path>] [--format text|json|github-actions]\n" +
     "  diff [--config <path>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +

@@ -20,6 +20,7 @@ export {
   type NodeInitializationResult,
 } from "./init.js";
 export { record, type RecordOptions, type RecordResult } from "./record.js";
+export { proposeBaseline, acceptBaseline } from "./candidate.js";
 export { changedFiles, validateBaseRef } from "./git.js";
 export { loadRuntimeConfig } from "./load.js";
 export { assertSafeInRootPath, resolveInRoot, RuntimeError } from "./paths.js";

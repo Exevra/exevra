@@ -93,6 +93,8 @@ npx exevra diff
 
 When an intentional change alters the execution contract, review it and update the baseline:
 
+To review and accept the exact same test run without running tests again, create a candidate with `npx exevra propose`. Review the findings and changes, then run `npx exevra accept --fingerprint <fingerprint>` using the printed fingerprint. Exevra rejects changed project files during the run or before acceptance. If a test command updates generated build files, use `npx exevra propose --exclude-generated build/generated`; repeat the option for other generated directories. **Excluded directories are not checked for source changes**, so exclude only files that are not test inputs. The snapshot includes ignored files and dependencies; it also excludes Git metadata, the candidate, configured reports, redirected command output, Python `__pycache__` and `.pytest_cache` directories, and the Vitest `node_modules/.vite` cache. External file symlink targets are checked; external directory symlinks and special files are rejected. Environment variables and other files outside the configuration root are not captured, so create a fresh candidate if those inputs change. Snapshotting can take time for large projects. The candidate remains next to the baseline with a `.candidate` suffix; remove it explicitly before proposing another.
+
 ```sh
 npx exevra record --config .exevra.yml --write
 ```
@@ -162,7 +164,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.5.0
+      - uses: Exevra/exevra@v0.6.0
         with:
           config: .exevra.yml
           mode: enforce

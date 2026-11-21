@@ -1,5 +1,5 @@
 import { renderText, type Finding } from "../core/index.js";
-import { renderGitHubSummaryText } from "../cli/summary.js";
+import { renderGitHubSummary } from "../cli/summary.js";
 import type { CheckOptions, CheckResult } from "../runtime/index.js";
 
 export interface ActionCore {
@@ -25,14 +25,6 @@ export interface ActionDependencies {
 
 const findingText = (finding: Finding): string =>
   renderText({ findings: [finding] }).trim();
-
-const escapeHtml = (value: string): string =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 
 const baseRefFor = (
   eventName: string | undefined,
@@ -64,15 +56,16 @@ export const runAction = async ({
       configPath: core.getInput("config"),
       ...(baseRef === undefined ? {} : { baseRef }),
     });
-    const summary = renderGitHubSummaryText(checked, {
+    const summary = renderGitHubSummary(checked, {
       identityDiffs: checked.identityDiffs,
+      advisory: mode === "advisory",
     });
     for (const finding of checked.findings) {
       if (mode === "advisory" || finding.severity === "warning")
         core.warning(findingText(finding));
       else core.error(findingText(finding));
     }
-    await core.summary.addCodeBlock(escapeHtml(summary), "text").write();
+    await core.summary.addRaw(summary).write();
     if (
       mode === "enforce" &&
       checked.findings.some((finding) => finding.severity === "error")
