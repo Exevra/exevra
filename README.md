@@ -164,7 +164,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - uses: Exevra/exevra@v0.5.0
+      - uses: Exevra/exevra@v0.6.0
         with:
           config: .exevra.yml
           mode: enforce
