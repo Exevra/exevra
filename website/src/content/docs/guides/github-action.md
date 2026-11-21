@@ -36,7 +36,7 @@ jobs:
 
 Use a versioned release such as `Exevra/exevra@v0.5.0`. Use `uses: ./` only when testing a checked-out copy of Exevra itself.
 
-In `enforce` mode, error findings fail the Action. Warning findings produce annotations without failing it. `advisory` keeps all findings nonblocking. The Action adds an escaped text summary and does not require a write token or call the GitHub API.
+In `enforce` mode, error findings fail the Action. Warning findings produce annotations without failing it. `advisory` keeps all findings nonblocking. The Action adds a report to the GitHub job summary with execution totals, findings, and suite counts compared with the baseline. Suite names appear in the report; individual test names remain private unless `identity_details: names` is enabled. The report uses the public Exevra logo and does not require a write token or call the GitHub API.
 
 ## Matrix jobs
 

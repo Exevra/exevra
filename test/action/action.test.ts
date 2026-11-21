@@ -106,7 +106,15 @@ test("defaults action inputs and leaves base comparison unavailable outside pull
   });
   assert.deepEqual(options, { configPath: ".exevra.yml" });
   assert.deepEqual(log.failures, []);
-  assert.match(log.codeBlocks[0] ?? "", /^EXEVRA PASSED/m);
+  assert.match(log.summaries[0] ?? "", /EXEVRA PASSED/m);
+});
+
+test("Action summary explains execution-contract notices", async () => {
+  const { toolkit: core, log } = toolkit();
+  const checked = result();
+  checked.notices = ["The current command or report configuration differs from the reviewed baseline."];
+  await runAction({ core, eventName: "push", eventPayload: {}, check: async () => checked });
+  assert.match(log.summaries[0] ?? "", /current command or report configuration differs/);
 });
 
 test("importing the Action library does not execute it in a GitHub Actions environment", async () => {
@@ -161,7 +169,7 @@ test("enforce mode annotates findings, writes the shared summary, and fails", as
       ]),
   });
   assert.match(log.errors[0] ?? "", /NO_TESTS_EXECUTED/);
-  assert.match(log.codeBlocks[0] ?? "", /^EXEVRA BLOCKED/m);
+  assert.match(log.summaries[0] ?? "", /EXEVRA BLOCKED/m);
   assert.deepEqual(log.failures, ["EXEVRA BLOCKED"]);
 });
 
@@ -188,7 +196,7 @@ test("enforce mode reports warning identity drift without failing", async () => 
   assert.match(log.warnings[0] ?? "", /TEST_IDENTITIES_CHANGED/);
   assert.deepEqual(log.errors, []);
   assert.deepEqual(log.failures, []);
-  assert.match(log.codeBlocks[0] ?? "", /^EXEVRA PASSED WITH WARNINGS/m);
+  assert.match(log.summaries[0] ?? "", /EXEVRA PASSED WITH WARNINGS/m);
 });
 
 test("advisory mode keeps findings visible without failing", async () => {
@@ -212,6 +220,7 @@ test("advisory mode keeps findings visible without failing", async () => {
   });
   assert.match(log.warnings[0] ?? "", /SUITE_DROP_EXCEEDED/);
   assert.deepEqual(log.failures, []);
+  assert.match(log.summaries[0] ?? "", /EXEVRA ADVISORY — NOT BLOCKING/);
 });
 
 test("operational errors fail regardless of mode", async () => {
@@ -262,10 +271,10 @@ test("keeps report-controlled finding content out of the Action summary", async 
         },
       ]),
   });
-  assert.equal(log.summaries.length, 0);
-  assert.match(log.codeBlocks[0] ?? "", /SUITE_BELOW_MINIMUM/);
+  assert.equal(log.summaries.length, 1);
+  assert.match(log.summaries[0] ?? "", /SUITE_BELOW_MINIMUM/);
   assert.doesNotMatch(
-    log.codeBlocks[0] ?? "",
+    log.summaries[0] ?? "",
     /not a heading|not markdown|not script|literal|<script>|<h1>/i,
   );
 });
@@ -289,11 +298,11 @@ test("escapes explicitly opted-in identity names in the Action summary", async (
     }),
   });
   assert.match(
-    log.codeBlocks[0] ?? "",
+    log.summaries[0] ?? "",
     /&quot;unit\\u001fremoved&lt;name&gt;&quot;/,
   );
   assert.match(
-    log.codeBlocks[0] ?? "",
+    log.summaries[0] ?? "",
     /&quot;unit\\u001fadded&lt;name&gt;&quot;/,
   );
 });
@@ -321,7 +330,7 @@ test("does not expose test identifiers or raw reports in Action annotations or s
     eventPayload: {},
     check: async () => checked,
   });
-  const output = [...log.errors, ...log.codeBlocks].join("\n");
+  const output = [...log.errors, ...log.summaries].join("\n");
   assert.doesNotMatch(output, /private-test-identifier|<testsuite/);
   assert.match(output, /NO_TESTS_EXECUTED/);
 });
@@ -361,16 +370,15 @@ test("renders opted-in identity names only in the escaped Action summary", async
     ...log.errors,
     ...log.warnings,
     ...log.infos,
-    ...log.summaries,
     ...log.failures,
   ].join("\n");
   assert.doesNotMatch(logs, /removed<name>|added<name>|\\u001f/);
   assert.match(
-    log.codeBlocks[0] ?? "",
+    log.summaries[0] ?? "",
     /&quot;unit\\u001fremoved&lt;name&gt;&quot;/,
   );
   assert.match(
-    log.codeBlocks[0] ?? "",
+    log.summaries[0] ?? "",
     /&quot;unit\\u001fadded&lt;name&gt;&quot;/,
   );
 
@@ -382,7 +390,7 @@ test("renders opted-in identity names only in the escaped Action summary", async
     check: async () => result(checked.findings),
   });
   assert.doesNotMatch(
-    countLog.codeBlocks[0] ?? "",
+    countLog.summaries[0] ?? "",
     /removed<name>|added<name>|\\u001f/,
   );
 });

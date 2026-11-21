@@ -18,6 +18,8 @@ import {
   initialize,
   initializeNode,
   record,
+  proposeBaseline,
+  acceptBaseline,
   type CheckResult,
   type DoctorResult,
   type DiffResult,
@@ -89,7 +91,9 @@ type Invocation =
   | DiffInvocation
   | DoctorInvocation
   | AggregateInvocation
-  | HelpInvocation;
+  | HelpInvocation
+  | { command: "propose"; configPath: string; excludeGenerated: string[] }
+  | { command: "accept"; configPath: string; fingerprint: string };
 
 class InvocationError extends Error {}
 
@@ -101,6 +105,8 @@ const usage =
   "  init --gradle\n" +
   "  init --pytest [--command <command>]\n" +
   "  record [--config <path>] [--write]\n" +
+  "  propose [--config <path>] [--exclude-generated <directory>]...\n" +
+  "  accept --fingerprint <sha256> [--config <path>]\n" +
   "  check [--config <path>] [--base-ref <ref>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
   "  doctor [--config <path>] [--format text|json|github-actions]\n" +
   "  diff [--config <path>] [--mode enforce|advisory] [--format text|json|github-actions]\n" +
@@ -126,13 +132,15 @@ const parse = (arguments_: readonly string[]): Invocation => {
   if (
     command !== "init" &&
     command !== "record" &&
+    command !== "propose" &&
+    command !== "accept" &&
     command !== "check" &&
     command !== "doctor" &&
     command !== "diff" &&
     command !== "aggregate"
   )
     throw new InvocationError(
-      "expected init, record, check, doctor, diff, or aggregate",
+      "expected init, record, propose, accept, check, doctor, diff, or aggregate",
     );
   if (
     (command === "doctor" || command === "diff") &&
@@ -141,9 +149,15 @@ const parse = (arguments_: readonly string[]): Invocation => {
   )
     return { command: "help" };
   const values = new Map<string, string>();
+  const excludeGenerated: string[] = [];
   let write = false;
   for (let index = 1; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
+    if (command === "propose" && argument === "--exclude-generated") {
+      excludeGenerated.push(optionValue(arguments_, index, argument));
+      index += 1;
+      continue;
+    }
     if (argument === "--write" && command === "record") {
       if (write) throw new InvocationError("--write may be supplied once");
       write = true;
@@ -157,8 +171,10 @@ const parse = (arguments_: readonly string[]): Invocation => {
     const allowed =
       command === "init"
         ? new Set(["--config", "--command", "--report", "--maven", "--gradle", "--pytest"])
-        : command === "record"
+        : command === "record" || command === "propose"
         ? new Set(["--config"])
+        : command === "accept"
+        ? new Set(["--config", "--fingerprint"])
         : command === "check"
         ? new Set(["--config", "--base-ref", "--mode", "--format"])
         : command === "doctor"
@@ -235,6 +251,12 @@ const parse = (arguments_: readonly string[]): Invocation => {
     };
   }
   if (command === "record") return { command, configPath, write };
+  if (command === "propose") return { command, configPath, excludeGenerated };
+  if (command === "accept") {
+    const fingerprint = values.get("--fingerprint");
+    if (!fingerprint) throw new InvocationError("--fingerprint is required for accept");
+    return { command, configPath, fingerprint };
+  }
   const mode = values.get("--mode") ?? "enforce";
   const format = values.get("--format") ?? "text";
   if (mode !== "enforce" && mode !== "advisory")
@@ -267,11 +289,12 @@ const render = (
 const writeOutput = async (
   format: Format,
   result: CheckResult | DiffResult | DoctorResult,
+  advisory = false,
 ): Promise<void> => {
   process.stdout.write(render(format, result));
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (format === "github-actions" && summaryPath !== undefined && summaryPath !== "")
-    await appendFile(summaryPath, renderGitHubSummary(result), "utf8");
+    await appendFile(summaryPath, renderGitHubSummary(result, { advisory }), "utf8");
 };
 
 export const main = async (
@@ -334,9 +357,21 @@ export const main = async (
         ? 2
         : 0;
     }
+    if (invocation.command === "propose") {
+      const result = await proposeBaseline({ configPath: invocation.configPath, excludeGenerated: invocation.excludeGenerated });
+      process.stdout.write(renderText({ findings: result.findings, changes: result.changes }, { identityDiffs: result.identityDiffs }));
+      for (const directory of invocation.excludeGenerated) process.stdout.write(`Excluded generated directory: ${escapeTextControls(directory)}\n`);
+      process.stdout.write(`Candidate fingerprint: ${result.fingerprint}\nRun exevra accept with the same --config and this --fingerprint.\n`);
+      return 0;
+    }
+    if (invocation.command === "accept") {
+      await acceptBaseline({ configPath: invocation.configPath, fingerprint: invocation.fingerprint });
+      process.stdout.write("Reviewed candidate accepted. Remove the candidate file before proposing another.\n");
+      return 0;
+    }
     if (invocation.command === "aggregate") {
       const result = await aggregate({ configPath: invocation.configPath });
-      await writeOutput(invocation.format, result);
+      await writeOutput(invocation.format, result, invocation.mode === "advisory");
       return (
         invocation.mode === "advisory" ||
         !result.findings.some((finding) => finding.severity === "error")
@@ -346,7 +381,7 @@ export const main = async (
     }
     if (invocation.command === "diff") {
       const result = await diff({ configPath: invocation.configPath });
-      await writeOutput(invocation.format, result);
+      await writeOutput(invocation.format, result, invocation.mode === "advisory");
       return (
         invocation.mode === "advisory" ||
         !result.findings.some((finding) => finding.severity === "error")
@@ -366,7 +401,7 @@ export const main = async (
       configPath: invocation.configPath,
       baseRef: invocation.baseRef,
     });
-    await writeOutput(invocation.format, result);
+    await writeOutput(invocation.format, result, invocation.mode === "advisory");
     return (
       invocation.mode === "advisory" ||
       !result.findings.some((finding) => finding.severity === "error")

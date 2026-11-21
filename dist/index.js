@@ -39560,69 +39560,72 @@ __nccwpck_require__.d(__webpack_exports__, {
 var core = __nccwpck_require__(930);
 ;// CONCATENATED MODULE: ./build/src/cli/summary.js
 const escapeHtml = (value) => value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-const outcome = (input) => input.findings.some(({ severity }) => severity === "error")
-    ? "EXEVRA BLOCKED"
-    : input.findings.length > 0
-        ? "EXEVRA PASSED WITH WARNINGS"
-        : "EXEVRA PASSED";
-const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
-const identityList = (identifiers) => {
-    const displayed = [...identifiers]
-        .sort(compare)
-        .slice(0, 20)
-        .map((identifier) => JSON.stringify(identifier));
-    const more = identifiers.length - displayed.length;
-    return `${displayed.join(", ")}${more === 0 ? "" : ` and ${more} more`}`;
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const descriptions = {
+    REPORT_MISSING: "A required report is missing.", REPORT_UNREADABLE: "A required report could not be read.",
+    SHARD_MISSING: "A required shard is missing.", SHARD_NO_TESTS_EXECUTED: "A shard executed no tests.",
+    NO_TESTS_EXECUTED: "No tests were executed.", SUITE_BELOW_MINIMUM: "A suite ran fewer tests than its minimum.",
+    SUITE_DROP_EXCEEDED: "A suite ran fewer tests than its baseline allows.", TEST_IDENTITIES_CHANGED: "Test identities changed.",
+    BASELINE_MISSING: "No reviewed baseline is available.", BASELINE_SCHEMA_UNSUPPORTED: "The baseline version is unsupported.",
+    WATCHED_CONFIG_CHANGED_WITH_SIGNAL_DROP: "Configuration changed while test execution dropped.",
+    TEST_COMMAND_FAILED: "The configured test command failed.", TEST_FILTERED: "Test-selection flags were detected.",
 };
-const renderGitHubSummaryBody = (input, options = {}) => {
-    const lines = [outcome(input)];
-    if (input.checks !== undefined) {
-        lines.push("DOCTOR");
-        lines.push(...input.checks.map(({ name, status }) => `${name}: ${status}`));
-        return lines;
+const renderGitHubSummary = (input, options = {}) => {
+    const status = input.findings.some(({ severity }) => severity === "error") ? (options.advisory ? "EXEVRA ADVISORY — NOT BLOCKING" : "EXEVRA BLOCKED") : input.findings.length ? "EXEVRA PASSED WITH WARNINGS" : "EXEVRA PASSED";
+    const lines = ["## Exevra", "", '<img src="https://raw.githubusercontent.com/Exevra/exevra/main/website/src/assets/exevra-folded-trace.png" alt="Exevra logo" width="64" />', "", `### ${status}`, ""];
+    if (input.checks) {
+        lines.push("### Checks", "", ...input.checks.map(({ name, status }) => `- ${escapeHtml(name)}: **${escapeHtml(status)}**`), "");
+        return lines.join("\n");
     }
-    const findings = new Map();
-    for (const finding of input.findings) {
-        const key = `${finding.code} (${finding.severity})`;
-        findings.set(key, (findings.get(key) ?? 0) + 1);
+    if (input.suites?.length) {
+        const executed = input.suites.reduce((sum, suite) => sum + suite.executed, 0);
+        const skipped = input.suites.reduce((sum, suite) => sum + suite.skipped, 0);
+        lines.push(`**${executed} tests executed** · ${skipped} skipped · ${input.suites.length} suites`, "");
     }
-    for (const [finding, count] of [...findings].sort(([left], [right]) => left.localeCompare(right)))
-        lines.push(`finding: ${finding} x${count}`);
-    if (input.suites !== undefined)
-        lines.push(`suites: ${input.suites.length}, executed: ${input.suites.reduce((total, suite) => total + suite.executed, 0)}, skipped: ${input.suites.reduce((total, suite) => total + suite.skipped, 0)}`);
-    if (input.changes !== undefined) {
-        const changes = new Map();
-        for (const change of input.changes.suites)
-            changes.set(change.kind, (changes.get(change.kind) ?? 0) + 1);
-        lines.push(`suite changes: ${[...changes]
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([kind, count]) => `${kind} ${count}`)
-            .join(", ") || "none"}`);
+    if (input.findings.length) {
+        lines.push("### Needs attention", "");
+        for (const finding of input.findings) {
+            const counts = finding.missingTestCount === undefined || finding.addedTestCount === undefined ? "" : ` (${finding.missingTestCount} missing, ${finding.addedTestCount} added)`;
+            lines.push(`- **${escapeHtml(finding.code)}** (${finding.severity === "error" && !options.advisory ? "blocked" : "warning"}): ${descriptions[finding.code] ?? "Review this finding."}${counts}`);
+        }
+        lines.push("", "Review the findings and run `exevra diff` before updating the baseline.", "");
     }
-    for (const diff of [...(options.identityDiffs ?? [])].sort((left, right) => compare(left.suite, right.suite)))
-        lines.push(`[TEST_IDENTITIES_CHANGED] ${diff.suite} missing: ${identityList(diff.missingTestIds)}; added: ${identityList(diff.addedTestIds)}`);
-    if ((input.notices ?? []).length > 0)
-        lines.push(`notices: ${input.notices.length}`);
-    return lines;
+    if (input.suiteComparisons?.length) {
+        lines.push("### Suite comparison", "", "<table><thead><tr><th>Suite</th><th>Baseline</th><th>This run</th><th>Change</th><th>Status</th></tr></thead><tbody>");
+        for (const suite of input.suiteComparisons) {
+            const delta = suite.baseline === null || suite.current === null ? "—" : `${suite.current - suite.baseline > 0 ? "+" : ""}${suite.current - suite.baseline}`;
+            const findings = input.findings.filter((finding) => finding.suite === suite.name);
+            const state = findings.some(({ severity }) => severity === "error") && !options.advisory ? "Blocked" : findings.length ? "Warning" : suite.baseline === null ? "Added" : suite.current === null ? "Removed" : "Passed";
+            lines.push(`<tr><td>${escapeHtml(suite.name)}</td><td>${suite.baseline ?? "—"}</td><td>${suite.current ?? "—"}</td><td>${delta}</td><td>${state}</td></tr>`);
+        }
+        lines.push("</tbody></table>", "");
+    }
+    if (input.changes)
+        lines.push(`Baseline comparison: ${input.changes.suites.length} suite changes.`, "");
+    for (const diff of options.identityDiffs ?? []) {
+        const show = (ids) => ids.slice().sort().slice(0, 20).map((id) => escapeHtml(JSON.stringify(id))).join(", ");
+        lines.push(`<p><strong>Test identities: ${escapeHtml(diff.suite)}</strong><br>Missing: ${show(diff.missingTestIds)}<br>Added: ${show(diff.addedTestIds)}</p>`);
+    }
+    if (input.notices?.length) {
+        const safeNotices = new Set([
+            "The current command or report configuration differs from the reviewed baseline.",
+            "Changed-file comparison is unavailable because no base ref was supplied.",
+            "Changed-file comparison is unavailable for aggregate checks.",
+        ]);
+        lines.push("### Notices", "", "<ul>");
+        for (const notice of input.notices)
+            lines.push(`<li>${safeNotices.has(notice) ? escapeHtml(notice) : "Additional notice available in the CLI output."}</li>`);
+        lines.push("</ul>", "");
+    }
+    return lines.join("\n") + "\n";
 };
-const renderGitHubSummaryText = (input, options = {}) => renderGitHubSummaryBody(input, options).join("\n");
-const renderGitHubSummary = (input, options = {}) => `## Exevra\n\n<pre><code>${escapeHtml(renderGitHubSummaryText(input, options))}</code></pre>\n`;
 
 ;// CONCATENATED MODULE: ./build/src/action/index.js
 
 
 const findingText = (finding) => (0,core/* renderText */.S5)({ findings: [finding] }).trim();
-const action_escapeHtml = (value) => value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 const baseRefFor = (eventName, payload) => {
     if (eventName !== "pull_request")
         return undefined;
@@ -39645,8 +39648,9 @@ const runAction = async ({ core, eventName, eventPayload, check, }) => {
             configPath: core.getInput("config"),
             ...(baseRef === undefined ? {} : { baseRef }),
         });
-        const summary = renderGitHubSummaryText(checked, {
+        const summary = renderGitHubSummary(checked, {
             identityDiffs: checked.identityDiffs,
+            advisory: mode === "advisory",
         });
         for (const finding of checked.findings) {
             if (mode === "advisory" || finding.severity === "warning")
@@ -39654,7 +39658,7 @@ const runAction = async ({ core, eventName, eventPayload, check, }) => {
             else
                 core.error(findingText(finding));
         }
-        await core.summary.addCodeBlock(action_escapeHtml(summary), "text").write();
+        await core.summary.addRaw(summary).write();
         if (mode === "enforce" &&
             checked.findings.some((finding) => finding.severity === "error"))
             core.setFailed("EXEVRA BLOCKED");
@@ -39676,7 +39680,7 @@ __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependen
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(3218);
 /* harmony import */ var node_fs_promises__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(1455);
 /* harmony import */ var _index_js__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(2751);
-/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7307);
+/* harmony import */ var _runtime_index_js__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(9264);
 
 
 
@@ -40472,7 +40476,7 @@ const renderGitHubActions = (input) => {
 
 /***/ }),
 
-/***/ 7307:
+/***/ 9264:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -40481,7 +40485,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   z6: () => (/* reexport */ check_check)
 });
 
-// UNUSED EXPORTS: RuntimeError, aggregate, assertSafeInRootPath, changedFiles, diff, doctor, initialize, initializeNode, loadRuntimeConfig, record, resolveInRoot, validateBaseRef
+// UNUSED EXPORTS: RuntimeError, acceptBaseline, aggregate, assertSafeInRootPath, changedFiles, diff, doctor, initialize, initializeNode, loadRuntimeConfig, proposeBaseline, record, resolveInRoot, validateBaseRef
 
 // EXTERNAL MODULE: ./build/src/core/index.js + 7 modules
 var core = __nccwpck_require__(930);
@@ -41324,6 +41328,13 @@ const reports_loadAggregatedReports = async (root, aggregation) => {
 
 
 
+const check_compareSuiteCounts = (baseline, suites) => {
+    if (!baseline || baseline.schemaVersion !== 1)
+        return undefined;
+    const before = new Map(baseline.suites.map((suite) => [suite.name, suite.executed]));
+    const after = new Map(suites.map((suite) => [suite.name, suite.executed]));
+    return [...new Set([...before.keys(), ...after.keys()])].sort().map((name) => ({ name, baseline: before.get(name) ?? null, current: after.get(name) ?? null }));
+};
 const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutput, }, context = {}) => {
     const loaded = context.loaded ?? (await load_loadRuntimeConfig(configPath));
     const notices = [];
@@ -41341,7 +41352,7 @@ const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutp
         };
     const findings = filterFindings;
     const baseline = await load_readBaselineIfPresent(loaded.root, loaded.baselinePath);
-    await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config), [loaded.configPath, loaded.baselinePath]);
+    await command_cleanReports(await reports_expandConfiguredReportPaths(loaded.root, loaded.config), [loaded.configPath, loaded.baselinePath, `${loaded.baselinePath}.candidate`]);
     const commandStartedAt = Date.now();
     const command = await command_runConfiguredCommand(loaded.root, loaded.config.command, suppressCommandOutput);
     if (command.finding)
@@ -41399,6 +41410,7 @@ const runCheck = async ({ configPath, baseRef, changedPaths, suppressCommandOutp
         identityDiffs: result.identityDiffs,
         suites,
         notices,
+        suiteComparisons: check_compareSuiteCounts(baseline, suites),
         config: loaded.config,
         baseline,
     };
@@ -41555,6 +41567,7 @@ const doctor = async (options) => {
 
 
 
+
 const shardFinding = (shard) => ({
     code: "SHARD_MISSING",
     severity: "error",
@@ -41600,7 +41613,7 @@ const aggregate = async ({ configPath, }) => {
         currentSuites: suites,
         changedPaths: [],
     });
-    return { ...result, suites, notices };
+    return { ...result, suites, notices, suiteComparisons: compareSuiteCounts(baseline, suites) };
 };
 
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
@@ -41624,7 +41637,7 @@ class record_BaselineExistsError extends paths_RuntimeError {
         super(`baseline already exists: ${path}; pass explicit write permission to overwrite it`);
     }
 }
-const atomicWriteBaseline = async (path, contents, overwrite) => {
+const record_atomicWriteBaseline = async (path, contents, overwrite) => {
     const temporary = `${path}.tmp-${randomUUID()}`;
     const file = await open(temporary, "wx", 0o600);
     try {
@@ -41648,7 +41661,7 @@ const atomicWriteBaseline = async (path, contents, overwrite) => {
         await rm(temporary, { force: true }).catch(() => undefined);
     }
 };
-const record_record = async ({ configPath, write = false, generatedAt = new Date().toISOString(), }) => {
+const record_record = async ({ configPath, write = false, generatedAt = new Date().toISOString(), prepare = false, }) => {
     const loaded = await loadRuntimeConfig(configPath);
     const filterFindings = loaded.config.maven
         ? mavenFilterFindings(loaded.config.command, loaded.config.maven.filterPolicy ?? "warn")
@@ -41672,7 +41685,7 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
                 throw error;
         }
     }
-    await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath]);
+    await cleanReports(existingReportPaths, [loaded.configPath, loaded.baselinePath, `${loaded.baselinePath}.candidate`]);
     const commandStartedAt = Date.now();
     const command = await runConfiguredCommand(loaded.root, loaded.config.command);
     if (command.finding)
@@ -41711,8 +41724,10 @@ const record_record = async ({ configPath, write = false, generatedAt = new Date
             };
         }),
     };
-    await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
-    await atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), write);
+    if (!prepare) {
+        await assertSafeInRootPath(loaded.root, loaded.baselinePath, true);
+        await record_atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), write);
+    }
     return { baseline, suites, findings };
 };
 
@@ -41973,7 +41988,190 @@ const initializeNode = async (configPath) => {
     };
 };
 
+;// CONCATENATED MODULE: ./build/src/runtime/candidate.js
+
+
+
+
+
+
+
+
+
+const fingerprint = (value) => createHash("sha256").update(value).digest("hex");
+const within = (directory, path) => {
+    const relation = relative(directory, path);
+    return relation === "" || (relation !== ".." && !relation.startsWith(`..${sep}`) && !isAbsolute(relation));
+};
+const canonicalPath = async (path) => {
+    try {
+        return await realpath(path);
+    }
+    catch (error) {
+        if (error.code !== "ENOENT")
+            throw error;
+        return join(await canonicalPath(dirname(path)), basename(path));
+    }
+};
+const projectSnapshot = async (root, candidatePath, redirected = new Set(), captureOutput = false, generated = []) => {
+    const files = new Map();
+    const visited = new Set();
+    const generatedPaths = await Promise.all(generated.map((directory) => canonicalPath(resolveInRoot(root, directory))));
+    const outputs = captureOutput ? [1, 2].flatMap((fd) => { try {
+        const stat = fstatSync(fd);
+        return stat.isFile() ? [stat] : [];
+    }
+    catch {
+        return [];
+    } }) : [];
+    const visit = async (path, name) => {
+        if (generated.some((directory) => name === `./${directory}` || name.startsWith(`./${directory}/`)))
+            return;
+        if (path === candidatePath || path === join(root, ".git") || path.endsWith(`${sep}__pycache__`) || path.endsWith(`${sep}.pytest_cache`) || path.endsWith(`${sep}node_modules${sep}.vite`))
+            return;
+        const entry = await lstat(path);
+        if (entry.isFile() && outputs.some((output) => output.dev === entry.dev && output.ino === entry.ino)) {
+            redirected.add(name);
+            return;
+        }
+        if (redirected.has(name))
+            return;
+        if (entry.isSymbolicLink()) {
+            files.set(name, fingerprint(`link:${entry.mode}:${await readlink(path)}`));
+            const target = await realpath(path);
+            const relation = relative(root, target);
+            if ((relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) && !(await lstat(target)).isFile())
+                throw new RuntimeError(`cannot verify project files through an external directory symlink: ${path}`);
+            if (generatedPaths.some((directory) => within(directory, target)))
+                return;
+            await visit(target, `${name}/target`);
+        }
+        else if (entry.isDirectory()) {
+            const canonical = await realpath(path);
+            if (generatedPaths.some((directory) => within(directory, canonical)))
+                return;
+            if (visited.has(canonical))
+                return;
+            visited.add(canonical);
+            for (const child of (await readdir(path)).sort())
+                await visit(join(path, child), `${name}/${child}`);
+        }
+        else if (entry.isFile()) {
+            const content = await readFile(path);
+            const after = await lstat(path);
+            if (after.size !== entry.size || after.mtimeMs !== entry.mtimeMs || after.ino !== entry.ino)
+                throw new RuntimeError(`project file changed during snapshot: ${path}`);
+            files.set(name, createHash("sha256").update(`${entry.mode}:`).update(content).digest("hex"));
+        }
+        else
+            throw new RuntimeError(`cannot verify project file: ${path}`);
+    };
+    await visit(root, ".");
+    return files;
+};
+const snapshotFingerprint = (files, excluded) => fingerprint(JSON.stringify([...files].filter(([name]) => !excluded.includes(name)).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)));
+const generatedDirectories = async (root, paths, protectedPaths) => {
+    const result = new Set();
+    for (const path of paths) {
+        if (!path || path.includes("\0") || path.includes("\\") || path.split("/").includes("..") || isAbsolute(path))
+            throw new RuntimeError("generated output must be a relative directory within the configuration root");
+        const target = resolveInRoot(root, path);
+        const canonicalTarget = await canonicalPath(target);
+        const canonicalProtected = await Promise.all(protectedPaths.map(canonicalPath));
+        if (canonicalProtected.some((protectedPath) => within(canonicalTarget, protectedPath)))
+            throw new RuntimeError("generated output cannot contain the configuration, baseline, or candidate");
+        await assertSafeInRootPath(root, target);
+        try {
+            if (!(await lstat(target)).isDirectory())
+                throw new RuntimeError(`generated output is not a directory: ${path}`);
+        }
+        catch (error) {
+            if (error.code !== "ENOENT")
+                throw error;
+        }
+        result.add(relative(root, canonicalTarget).split(sep).join("/"));
+    }
+    return [...result].sort();
+};
+const proposeBaseline = async ({ configPath, excludeGenerated = [] }) => {
+    const loaded = await loadRuntimeConfig(configPath);
+    const candidatePath = `${loaded.baselinePath}.candidate`;
+    const generated = await generatedDirectories(loaded.root, excludeGenerated, [loaded.configPath, loaded.baselinePath, candidatePath]);
+    await assertSafeInRootPath(loaded.root, candidatePath, true);
+    try {
+        await lstat(candidatePath);
+        throw new RuntimeError("candidate already exists; review or remove it before proposing another");
+    }
+    catch (error) {
+        if (error.code !== "ENOENT")
+            throw error;
+    }
+    const configSource = await readFile(loaded.configPath, "utf8");
+    await assertSafeInRootPath(loaded.root, loaded.baselinePath);
+    let baselineSource;
+    try {
+        baselineSource = await readFile(loaded.baselinePath, "utf8");
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            throw new RuntimeError("a reviewed baseline is required before proposing changes");
+        throw error;
+    }
+    const baseline = loadBaseline(baselineSource);
+    const redirected = new Set();
+    const beforeReports = await expandConfiguredReportPaths(loaded.root, loaded.config);
+    const before = await projectSnapshot(loaded.root, candidatePath, redirected, true, generated);
+    const result = await record({ configPath, write: true, prepare: true });
+    if (result.findings.some((finding) => finding.severity === "error") || !result.baseline)
+        throw new RuntimeError("cannot propose a baseline because the test command or reports failed");
+    if (await readFile(loaded.configPath, "utf8") !== configSource || await readFile(loaded.baselinePath, "utf8") !== baselineSource)
+        throw new RuntimeError("configuration or baseline changed during the test run");
+    const afterReports = await expandConfiguredReportPaths(loaded.root, loaded.config);
+    const after = await projectSnapshot(loaded.root, candidatePath, redirected, true, generated);
+    const excluded = [...new Set([...redirected, ...beforeReports.map((path) => `./${relative(loaded.root, path)}`), ...afterReports.map((path) => `./${relative(loaded.root, path)}`)])].sort();
+    const projectHash = snapshotFingerprint(after, excluded);
+    if (snapshotFingerprint(before, excluded) !== projectHash)
+        throw new RuntimeError("project files changed during the test run; create a fresh proposal");
+    const source = JSON.stringify({ configHash: fingerprint(configSource), baselineHash: fingerprint(baselineSource), projectHash, excluded, generated, baseline: result.baseline }, null, 2) + "\n";
+    await assertSafeInRootPath(loaded.root, candidatePath, true);
+    await atomicWriteBaseline(candidatePath, source, false);
+    const evaluation = evaluate({ config: loaded.config, baseline, currentSuites: result.suites });
+    return { fingerprint: fingerprint(source), changes: compareBaseline(baseline, result.suites, loaded.config), findings: [...result.findings, ...evaluation.findings], identityDiffs: evaluation.identityDiffs };
+};
+const acceptBaseline = async ({ configPath, fingerprint: expected }) => {
+    if (!/^[0-9a-f]{64}$/.test(expected))
+        throw new RuntimeError("candidate fingerprint must be a SHA-256 hex digest");
+    const loaded = await loadRuntimeConfig(configPath);
+    const candidatePath = `${loaded.baselinePath}.candidate`;
+    await assertSafeInRootPath(loaded.root, candidatePath);
+    const source = await readFile(candidatePath, "utf8");
+    if (fingerprint(source) !== expected)
+        throw new RuntimeError("candidate fingerprint does not match the reviewed candidate");
+    let candidate;
+    try {
+        candidate = JSON.parse(source);
+    }
+    catch {
+        throw new RuntimeError("invalid candidate JSON");
+    }
+    if (!candidate || typeof candidate !== "object")
+        throw new RuntimeError("invalid candidate JSON");
+    if (fingerprint(await readFile(loaded.configPath, "utf8")) !== candidate.configHash)
+        throw new RuntimeError("configuration changed since candidate review");
+    await assertSafeInRootPath(loaded.root, loaded.baselinePath);
+    if (fingerprint(await readFile(loaded.baselinePath, "utf8")) !== candidate.baselineHash)
+        throw new RuntimeError("baseline changed since candidate review");
+    if (!candidate.projectHash || !Array.isArray(candidate.excluded) || !candidate.excluded.every((value) => typeof value === "string") || !Array.isArray(candidate.generated) || !candidate.generated.every((value) => typeof value === "string"))
+        throw new RuntimeError("candidate has no valid freshness information; create a fresh proposal");
+    const generated = await generatedDirectories(loaded.root, candidate.generated, [loaded.configPath, loaded.baselinePath, candidatePath]);
+    if (snapshotFingerprint(await projectSnapshot(loaded.root, candidatePath, new Set(candidate.excluded), false, generated), candidate.excluded) !== candidate.projectHash)
+        throw new RuntimeError("project files changed since candidate review; create a fresh proposal");
+    const baseline = loadBaseline(candidate.baseline);
+    await atomicWriteBaseline(loaded.baselinePath, serializeBaseline(baseline), true);
+};
+
 ;// CONCATENATED MODULE: ./build/src/runtime/index.js
+
 
 
 
